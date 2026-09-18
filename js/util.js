@@ -60,6 +60,16 @@ NG.DIFFS = {
   ngHard: { id: "ngHard", group: "无猜密度", label: "密雷", rows: 16, cols: 30, mines: 75, cell: 24 },
 };
 
+NG.DIFF_LADDER = ["ngEasy", "easy", "ngMedium", "medium", "ngHard", "hard"];
+
+NG.nextDiff = function (id, dir) {
+  var i = NG.DIFF_LADDER.indexOf(id);
+  if (i < 0) return null;
+  var j = i + (dir > 0 ? 1 : -1);
+  if (j < 0 || j >= NG.DIFF_LADDER.length) return null;
+  return NG.DIFF_LADDER[j];
+};
+
 NG.LESSONS = [
   {
     id: "single",
@@ -94,11 +104,12 @@ NG.LESSONS = [
   {
     id: "pattern1221",
     title: "1-2-2-1",
-    text: "1-2-2-1 沿边排开时，两个 2 的正外侧是雷，两端的斜角也是雷。先标雷，再翻安全格。",
-    rows: 4,
-    cols: 8,
-    mines: [8, 9, 12, 15],
-    startR: 3,
-    startC: 4,
+    text: "上面一排是 1-2-2-1。两个 2 的正下方是雷，两端正下方安全。",
+    rows: 2,
+    cols: 4,
+    mines: [5, 6],
+    startR: 0,
+    startC: 0,
+    forceOpen: [0, 1, 2, 3],
   },
 ];

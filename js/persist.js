@@ -38,15 +38,21 @@ NG.saveSettings = function (s) {
 NG.loadStats = function () {
   try {
     var raw = JSON.parse(localStorage.getItem(STATS_KEY) || "null");
-    if (raw && raw.games) return raw;
+    if (raw && raw.games) {
+      if (!raw.daily) raw.daily = {};
+      if (raw.lossStreak == null) raw.lossStreak = 0;
+      return raw;
+    }
   } catch (e) { /* ignore */ }
-  return { games: [], best: {}, streak: 0 };
+  return { games: [], best: {}, daily: {}, streak: 0, lossStreak: 0 };
 };
 
 NG.saveStats = function (stats) {
   var copy = {
     best: stats.best,
+    daily: stats.daily || {},
     streak: stats.streak,
+    lossStreak: stats.lossStreak || 0,
     games: stats.games.slice(-40).map(function (g) {
       var slim = {};
       for (var k in g) if (k !== "actions") slim[k] = g[k];
@@ -57,7 +63,9 @@ NG.saveStats = function (stats) {
   try {
     localStorage.setItem(STATS_KEY, JSON.stringify({
       best: copy.best,
+      daily: copy.daily,
       streak: copy.streak,
+      lossStreak: copy.lossStreak,
       games: full,
     }));
   } catch (e) {

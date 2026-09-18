@@ -33,23 +33,34 @@ NG.generate = function (opts) {
   var best = null;
   var attempts = 0;
   var zeroBias = 0;
-  while (attempts < 8 && now() - started < (opts.budget || 280)) {
+  var deg = neigh[start].length;
+  var slice = n > 900 ? 200 : n > 300 ? 130 : deg <= 3 ? 70 : 50;
+  while (attempts < 10 && now() - started < (opts.budget || 280)) {
     attempts++;
-    var built = construct(rows, cols, neigh, start, mineTarget, rng, zeroBias);
-    zeroBias += 2;
+    var remain = (opts.budget || 280) - (now() - started);
+    var useSlice = Math.min(slice + attempts * 10, Math.max(40, remain - 5));
+    var built = construct(rows, cols, neigh, start, mineTarget, rng, zeroBias, now() + useSlice);
+    zeroBias += 1;
     if (!built) continue;
     var numbers = built.numbers;
     if (!NG.proveSolvable(rows, cols, numbers, start)) {
       NG.lastFail = "proof";
       continue;
     }
-    best = built;
-    break;
+    var opening = floodCount(neigh, built.numbers, start);
+    var score = opening * 3 + NG.compute3BV(rows, cols, built.numbers);
+    if (!best || score > best._score) {
+      built._score = score;
+      built.opening = opening;
+      best = built;
+    }
+    if (n > 400) break;
+    if (opening >= (deg <= 3 ? 8 : 12) || (best && attempts >= (deg <= 3 ? 4 : 2))) break;
   }
   if (!best) {
     return { ok: false, reason: "这个雷密度构造不出无猜局面，请减少雷数或换一个起点", attempts: attempts };
   }
-  var opening = floodCount(neigh, best.numbers, start);
+  var opening = best.opening || floodCount(neigh, best.numbers, start);
   return {
     ok: true,
     numbers: best.numbers,
@@ -87,7 +98,7 @@ function floodCount(neigh, numbers, start) {
   return count;
 }
 
-function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
+function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias, deadline) {
   var n = rows * cols;
   var label = new Uint8Array(n);
   var opened = new Uint8Array(n);
@@ -95,11 +106,17 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
   revealed.fill(-2);
   var mineCount = 0;
   var nodes = 0;
-  var limit = n > 300 ? 20000 : 12000;
+  var limit = n > 900 ? 45000 : n > 300 ? 28000 : 12000;
+  var t0 = now();
+  var softMs = n > 900 ? 160 : n > 300 ? 100 : 45;
+  var hardMs = n > 900 ? 280 : n > 300 ? 180 : 100;
 
   var maxSafe = n - mineTarget;
-  var openCap = Math.min(maxSafe, n <= 81 ? 26 : n <= 256 ? 46 : 64);
-  var zTarget = (n <= 81 ? 5 : n <= 256 ? 8 : 11) - zeroBias;
+  var deg0 = neigh[start].length;
+  var openCap = Math.min(maxSafe, n <= 81 ? 26 : n <= 256 ? 46 : n <= 900 ? 72 : 96);
+  if (deg0 <= 3) openCap = Math.min(maxSafe, openCap + 8);
+  var zTarget = (n <= 81 ? 5 : n <= 256 ? 8 : n <= 900 ? 10 : 12) - zeroBias;
+  if (deg0 <= 3) zTarget = Math.max(zTarget, 4 - Math.min(2, zeroBias));
   if (zTarget < 1) zTarget = 1;
 
   label[start] = SAFE;
@@ -107,6 +124,8 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
   var zeros = [start];
   var inZero = {};
   inZero[start] = 1;
+  var midR = (rows - 1) / 2;
+  var midC = (cols - 1) / 2;
   var growGuard = 0;
   while (zeros.length < zTarget && growGuard++ < n * 3) {
     var base = zeros[(rng() * zeros.length) | 0];
@@ -114,7 +133,15 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
     var cand = [];
     for (var i = 0; i < nb.length; i++) if (!inZero[nb[i]]) cand.push(nb[i]);
     if (!cand.length) continue;
-    var pick = cand[(rng() * cand.length) | 0];
+    cand.sort(function (a, b) {
+      var ar = (a / cols) | 0, ac = a % cols;
+      var br = (b / cols) | 0, bc = b % cols;
+      var da = Math.abs(ar - midR) + Math.abs(ac - midC);
+      var db = Math.abs(br - midR) + Math.abs(bc - midC);
+      return da - db;
+    });
+    var pickPool = Math.max(1, Math.ceil(cand.length * (deg0 <= 3 ? 0.35 : 0.55)));
+    var pick = cand[(rng() * pickPool) | 0];
     var extra = 0;
     if (label[pick] !== SAFE) extra++;
     var pnb = neigh[pick];
@@ -396,6 +423,54 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
     return true;
   }
 
+  var bestLabel = null;
+  var bestMineCount = 0;
+  var bestScore = -1;
+  var deg = neigh[start].length;
+  var goal = n <= 81 ? 12 : n <= 256 ? 36 : 80;
+  if (deg <= 3) goal = (goal * 2 / 3) | 0;
+  else if (deg < 8) goal = (goal * 4 / 5) | 0;
+  var floorBv = n <= 81 ? 8 : n <= 256 ? 20 : n <= 900 ? 30 : 12;
+  var stopAt = 0;
+
+  function packNumbers() {
+    var out = new Int8Array(n);
+    for (var i = 0; i < n; i++) if (label[i] === MINE) out[i] = -1;
+    for (var i = 0; i < n; i++) {
+      if (out[i] < 0) continue;
+      var nb = neigh[i];
+      var c = 0;
+      for (var k = 0; k < nb.length; k++) if (label[nb[k]] === MINE) c++;
+      out[i] = c;
+    }
+    return out;
+  }
+
+  function leafOk() {
+    if (mineCount !== mineTarget) return false;
+    var packed = packNumbers();
+    if (packed[start] !== 0) return false;
+    var around = neigh[start];
+    for (var a = 0; a < around.length; a++) if (packed[around[a]] < 0) return false;
+    for (var w = 0; w < n; w++) if (wall[w] && packed[w] <= 0) return false;
+    var zeros = 0;
+    for (var z = 0; z < n; z++) if (packed[z] === 0) zeros++;
+    if (bestLabel && zeros > n * 0.42) return false;
+    if (!NG.proveSolvable(rows, cols, packed, start)) return false;
+    var bv = NG.compute3BV(rows, cols, packed);
+    if (bv > bestScore) {
+      bestScore = bv;
+      bestLabel = label.slice();
+      bestMineCount = mineCount;
+      if (!stopAt) stopAt = nodes + (n > 300 ? 500 : 800);
+    }
+    if (bv >= goal) return true;
+    var elapsed = now() - t0;
+    if (bestScore >= floorBv && elapsed >= softMs) return true;
+    if (elapsed >= hardMs) return true;
+    return !!(stopAt && nodes >= stopAt);
+  }
+
   function pickChoice() {
     var best = null;
     var cover = null;
@@ -417,10 +492,44 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
 
   function search() {
     if (++nodes > limit) return false;
+    if (deadline && now() > deadline) return !!bestLabel;
     if (!propagate()) return false;
-    if (countUnknown() === 0) return mineCount === mineTarget;
+    if (countUnknown() === 0) return leafOk();
     var choice = pickChoice();
-    if (!choice) return false;
+    if (!choice) {
+      var frontierUnk = [];
+      for (var fi = 0; fi < n; fi++) {
+        if (label[fi] !== UNK) continue;
+        var fnb = neigh[fi];
+        var touch = false;
+        for (var fk = 0; fk < fnb.length; fk++) {
+          if (opened[fnb[fk]] || wall[fnb[fk]]) { touch = true; break; }
+        }
+        if (touch) frontierUnk.push(fi);
+      }
+      if (!frontierUnk.length) return false;
+      var cell = frontierUnk[(rng() * frontierUnk.length) | 0];
+      var snapL2 = label.slice();
+      var snapO2 = opened.slice();
+      var snapR2 = revealed.slice();
+      var snapM2 = mineCount;
+      var order = mineCount + 0.4 < (mineTarget / n) * (n - countUnknown() + 1) ? [MINE, SAFE] : [SAFE, MINE];
+      for (var oi2 = 0; oi2 < order.length; oi2++) {
+        if (order[oi2] === MINE) {
+          if (mineCount >= mineTarget) continue;
+          label[cell] = MINE;
+          mineCount++;
+        } else {
+          if (!openSafe(cell)) {
+            label.set(snapL2); opened.set(snapO2); revealed.set(snapR2); mineCount = snapM2;
+            continue;
+          }
+        }
+        if (search()) return true;
+        label.set(snapL2); opened.set(snapO2); revealed.set(snapR2); mineCount = snapM2;
+      }
+      return false;
+    }
     var decided = n - countUnknown();
     var expect = (mineTarget / n) * Math.max(decided, 1);
     var prefer = mineCount + 0.35 < expect ? "mines" : "safe";
@@ -435,8 +544,15 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
     var snapR = revealed.slice();
     var snapM = mineCount;
     if (opts.length === 1 && opts[0] === "cover") {
-      for (var ci = 0; ci < choice.cells.length; ci++) {
-        var cell = choice.cells[ci];
+      var coverCells = choice.cells.slice();
+      for (var sx = coverCells.length - 1; sx > 0; sx--) {
+        var sy = (rng() * (sx + 1)) | 0;
+        var tmp = coverCells[sx];
+        coverCells[sx] = coverCells[sy];
+        coverCells[sy] = tmp;
+      }
+      for (var ci = 0; ci < coverCells.length; ci++) {
+        var cell = coverCells[ci];
         if (label[cell] !== UNK || mineCount >= mineTarget) continue;
         label[cell] = MINE;
         mineCount++;
@@ -458,14 +574,13 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
     return false;
   }
 
-  if (!search()) {
+  search();
+  if (!bestLabel) {
     NG.lastFail = "search";
     return null;
   }
-  if (mineCount !== mineTarget) {
-    NG.lastFail = "count " + mineCount;
-    return null;
-  }
+  label.set(bestLabel);
+  mineCount = bestMineCount;
 
   var numbers = new Int8Array(n);
   var mines = new Uint8Array(n);
@@ -482,11 +597,10 @@ function construct(rows, cols, neigh, start, mineTarget, rng, zeroBias) {
     for (var k = 0; k < nb.length; k++) if (mines[nb[k]]) c++;
     numbers[r] = c;
   }
-  // 首击必须是 0，周围无雷
-  if (numbers[start] !== 0) return null;
+  if (numbers[start] !== 0) { NG.lastFail = "nostart"; return null; }
   var around = neigh[start];
-  for (var ai = 0; ai < around.length; ai++) if (mines[around[ai]]) return null;
-  for (var wi = 0; wi < n; wi++) if (wall[wi] && numbers[wi] <= 0) return null;
+  for (var ai = 0; ai < around.length; ai++) if (mines[around[ai]]) { NG.lastFail = "neigh"; return null; }
+  for (var wi = 0; wi < n; wi++) if (wall[wi] && numbers[wi] <= 0) { NG.lastFail = "wall"; return null; }
 
   return { numbers: numbers, mines: mines, nodes: nodes };
 }

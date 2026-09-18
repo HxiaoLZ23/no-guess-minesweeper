@@ -7,6 +7,7 @@
   var lessonField = document.getElementById("lesson-field");
   var customEl = document.getElementById("custom");
   var boardEl = document.getElementById("board");
+  var boardWrap = document.getElementById("board-wrap");
   var statusEl = document.getElementById("status");
   var mineEl = document.getElementById("mine-count");
   var timerEl = document.getElementById("timer");
@@ -27,6 +28,7 @@
   var cursor = 0, pending = -1, flagMode = false, suppress = false;
   var pressTimer = null, bbbv = 0, lessonText = "";
   var pointers = new Map();
+  var pan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };
   var replay = { on: false, index: 0, actions: [], timer: null };
   var lastRecord = null;
 
@@ -81,12 +83,21 @@
     var id = diffEl.value;
     if (NG.DIFFS[id]) return Object.assign({ kind: "preset" }, NG.DIFFS[id]);
     if (id === "custom") {
+      var cols = clampNum($("cw").value, 5, 50);
+      var rows = clampNum($("ch").value, 5, 40);
+      if (rows * cols > 1400) {
+        rows = Math.min(rows, Math.floor(1400 / cols));
+        if (rows < 5) { rows = 5; cols = Math.min(cols, 50); }
+      }
+      var area = rows * cols;
+      var mines = clampNum($("cm").value, 1, Math.max(1, area - 10));
+      var hi = Math.floor(area * 0.18);
+      var lo = Math.max(1, Math.floor(area * 0.05));
+      if (mines > hi) mines = hi;
+      if (mines < lo && Number($("cm").value) >= lo) mines = lo;
       return {
         kind: "custom", id: "custom", label: "自定义",
-        cols: clampNum($("cw").value, 5, 50),
-        rows: clampNum($("ch").value, 5, 40),
-        mines: clampNum($("cm").value, 1, 400),
-        cell: 28,
+        cols: cols, rows: rows, mines: mines, cell: area > 400 ? 22 : 28,
       };
     }
     if (id === "lesson") {
@@ -163,8 +174,32 @@
     if (startR < 0 || startR >= rows) startR = (rows / 2) | 0;
     if (startC < 0 || startC >= cols) startC = (cols / 2) | 0;
     fixedStart = true;
-    say("每日 / 种子局：请从发光格子开始，大家才是同一局。");
+    numbers = null;
+    mines = null;
+    say("每日 / 种子局：正在构造同一局面…");
     cellBtn(startR, startC).classList.add("start");
+    generating = true;
+    $("face-btn").textContent = "…";
+    setTimeout(function () {
+      var res = NG.generate({
+        rows: rows, cols: cols, mines: mineTotal,
+        startR: startR, startC: startC,
+        rng: NG.mulberry32(seed),
+        budget: mineTotal > 80 ? 1600 : 900,
+      });
+      generating = false;
+      $("face-btn").textContent = "◎";
+      if (!res.ok) {
+        say(res.reason || "这一局构造失败，请换难度或稍后再试。");
+        return;
+      }
+      numbers = res.numbers;
+      mines = res.mines;
+      bbbv = res.bbbv;
+      say("每日 / 种子局：请从发光格子开始。已证明无猜 · 开口 " + res.opening + " · 3BV " + bbbv);
+      paintAll();
+      paintHud();
+    }, 20);
   }
 
   function setupLesson(ls) {
@@ -176,13 +211,22 @@
     startR = ls.startR; startC = ls.startC;
     fixedStart = true;
     seed = NG.hashSeed(ls.id);
-    if (!NG.proveSolvable(rows, cols, numbers, NG.idx(startR, startC, cols))) {
+    if (!ls.forceOpen && !NG.proveSolvable(rows, cols, numbers, NG.idx(startR, startC, cols))) {
       say("这一关布局有问题。");
       return;
     }
     bbbv = NG.compute3BV(rows, cols, numbers);
     started = true;
-    flood(NG.idx(startR, startC, cols));
+    if (ls.forceOpen) {
+      ls.forceOpen.forEach(function (i) {
+        if (numbers[i] >= 0) {
+          open[i] = 1;
+          openCount++;
+        }
+      });
+    } else {
+      flood(NG.idx(startR, startC, cols));
+    }
     say(lessonText);
     paintAll();
     paintHud();
@@ -361,28 +405,48 @@
     say("正在用约束求解构造推理链…");
     $("face-btn").textContent = "…";
     setTimeout(function () {
-      var rng = NG.mulberry32(seed || (Date.now() ^ (r * 131 + c)));
-      seed = seed || (Date.now() >>> 0);
-      var res = NG.generate({
-        rows: rows, cols: cols, mines: mineTotal,
-        startR: r, startC: c, rng: rng,
-        budget: mineTotal > 80 ? 700 : 320,
-      });
+      var base = seed || ((Date.now() ^ (r * 131 + c)) >>> 0);
+      if (!fixedStart) seed = base;
+      var deg = neigh[NG.idx(r, c, cols)].length;
+      var t0 = performance.now();
+      var cells = rows * cols;
+      var budget = cells > 900 ? 2800 : cells > 400 ? 1800 : mineTotal > 80 ? 1200 : deg <= 3 ? 900 : 650;
+      var tries = fixedStart ? 1 : cells > 400 ? 4 : deg <= 3 ? 8 : 5;
+      var best = null;
+      var bestSeed = seed;
+      for (var t = 0; t < tries; t++) {
+        if (performance.now() - t0 > budget) break;
+        var useSeed = fixedStart ? seed : ((base + t * 104729) >>> 0);
+        var res = NG.generate({
+          rows: rows, cols: cols, mines: mineTotal,
+          startR: r, startC: c,
+          rng: NG.mulberry32(useSeed),
+          budget: Math.max(80, budget - (performance.now() - t0)),
+        });
+        if (!res || !res.ok) continue;
+        if (!best || res.opening > best.opening || (res.opening === best.opening && res.bbbv > best.bbbv)) {
+          best = res;
+          bestSeed = useSeed;
+        }
+        if (best.opening >= (deg <= 3 ? 8 : 12)) break;
+        if (fixedStart) break;
+      }
       generating = false;
       $("face-btn").textContent = "◎";
-      if (!res.ok) {
-        say(res.reason || "构造失败，请换起点或降低雷数。");
+      if (!best) {
+        say("这个雷密度构造不出无猜局面，请减少雷数或换一个起点。");
         return;
       }
-      numbers = res.numbers;
-      mines = res.mines;
-      bbbv = res.bbbv;
+      if (!fixedStart) seed = bestSeed;
+      numbers = best.numbers;
+      mines = best.mines;
+      bbbv = best.bbbv;
       startR = r; startC = c;
       started = true;
       startTick();
       flood(NG.idx(r, c, cols));
       writeHash();
-      say("已证明无猜 · 开口 " + res.opening + " · 构造 " + res.ms + "ms · 3BV " + bbbv);
+      say("已证明无猜 · 开口 " + best.opening + " · 构造 " + Math.round(performance.now() - t0) + "ms · 3BV " + bbbv);
       afterMove();
     }, 20);
   }
@@ -496,11 +560,16 @@
     show(overlay);
     blip(660, 0.04);
     record(true, ms, bbvs, cps);
-    if (settings.mode === "practice") {
+    if (settings.mode !== "zen") {
       stats.streak = (stats.streak || 0) + 1;
+      stats.lossStreak = 0;
       NG.saveStats(stats);
-      if (stats.streak >= 3 && NG.DIFFS[diffEl.value] && diffEl.value !== "hard") {
-        say("已连胜 " + stats.streak + " 局，可以试试更高难度。");
+      var next = NG.nextDiff(diffEl.value, 1);
+      if (stats.streak >= 3 && next) {
+        say("已连胜 " + stats.streak + " 局。再来一局将升到「" + NG.DIFFS[next].label + "」。");
+        overlay.dataset.nextDiff = next;
+      } else {
+        delete overlay.dataset.nextDiff;
       }
     }
   }
@@ -521,6 +590,14 @@
     show(overlay);
     record(false, Math.round(nowElapsed()), "0", "0");
     stats.streak = 0;
+    stats.lossStreak = (stats.lossStreak || 0) + 1;
+    var easier = NG.nextDiff(diffEl.value, -1);
+    if (stats.lossStreak >= 3 && easier) {
+      say("连续未过。再来一局将降到「" + NG.DIFFS[easier].label + "」。");
+      overlay.dataset.nextDiff = easier;
+    } else {
+      delete overlay.dataset.nextDiff;
+    }
     NG.saveStats(stats);
   }
 
@@ -538,6 +615,14 @@
     if (won) {
       var prev = stats.best[key];
       if (!prev || ms < prev.ms) stats.best[key] = { ms: ms, bbbv: bbbv, bbvs: Number(bbvs), at: Date.now() };
+      if (entry.diff === "daily" || (typeof seed === "number" && fixedStart)) {
+        var day = dailyKey();
+        if (!stats.daily) stats.daily = {};
+        var dprev = stats.daily[day];
+        if (!dprev || ms < dprev.ms) {
+          stats.daily[day] = { ms: ms, bbvs: Number(bbvs), mode: entry.mode, at: Date.now() };
+        }
+      }
     }
     NG.saveStats(stats);
   }
@@ -583,19 +668,194 @@
     var info = analyze();
     if (!info) { say("先翻开第一格。"); return; }
     if (info.contradiction) { say("当前旗和数字矛盾，可能插错了。"); return; }
-    if (info.safe.length) {
-      var i = info.safe[0];
-      btnAt(i).classList.add("hint-safe");
-      say("下一步可确定：第 " + (((i / cols) | 0) + 1) + " 行第 " + ((i % cols) + 1) + " 列是安全的。");
+    var chain = buildChain(info, 3);
+    if (!chain.length) {
+      say(info.guess.length ? "当前有 " + info.guess.length + " 个格子还不能唯一确定。" : "已经没有未知格了。");
       return;
     }
-    if (info.mines.length) {
-      var m = info.mines[0];
-      btnAt(m).classList.add("hint-mine");
-      say("下一步可确定：第 " + (((m / cols) | 0) + 1) + " 行第 " + ((m % cols) + 1) + " 列是雷。");
-      return;
+    chain.forEach(function (pick) {
+      btnAt(pick.i).classList.add(pick.mine ? "hint-mine" : "hint-safe");
+    });
+    var first = chain[0];
+    var head = "第 " + (((first.i / cols) | 0) + 1) + " 行第 " + ((first.i % cols) + 1) + " 列" + (first.mine ? "是雷。" : "安全。") + first.why;
+    if (chain.length > 1) {
+      head += " 接下来还能确定 " + (chain.length - 1) + " 步。";
     }
-    say(info.guess.length ? "当前有 " + info.guess.length + " 个格子还不能唯一确定。" : "已经没有未知格了。");
+    say(head);
+  }
+
+  function buildChain(info, limit) {
+    var picks = [];
+    var used = {};
+    var simOpen = open.slice();
+    var simFlags = flags.slice();
+    void info;
+    for (var step = 0; step < limit; step++) {
+      var cur = NG.analyze({
+        rows: rows, cols: cols, neigh: neigh,
+        open: simOpen, flags: simFlags,
+        visible: visibleFrom(simOpen),
+        mineTotal: mineTotal,
+        wantProb: false,
+      });
+      if (!cur || cur.contradiction) break;
+      var pick = clearest(cur, simOpen, simFlags);
+      if (!pick || used[pick.i]) break;
+      used[pick.i] = 1;
+      picks.push(pick);
+      if (pick.mine) simFlags[pick.i] = 1;
+      else simOpen[pick.i] = 1;
+    }
+    return picks;
+  }
+
+  function visibleFrom(openArr) {
+    var v = new Int8Array(rows * cols);
+    v.fill(-1);
+    if (!numbers) return v;
+    for (var i = 0; i < v.length; i++) if (openArr[i]) v[i] = numbers[i];
+    return v;
+  }
+
+  function clearest(info, openArr, flagsArr) {
+    var explained = explainLocal(openArr || open, flagsArr || flags);
+    var best = null;
+    function consider(i, mine, score, why) {
+      if (!best || score > best.score) best = { i: i, mine: mine, score: score, why: why };
+    }
+    info.mines.forEach(function (i) {
+      var e = explained[i];
+      if (e && e.mine) consider(i, true, e.score, e.why);
+      else consider(i, true, 15, "把它换成安全格会和某个数字矛盾。");
+    });
+    info.safe.forEach(function (i) {
+      var e = explained[i];
+      if (e && !e.mine) consider(i, false, e.score, e.why);
+      else consider(i, false, 15, "现有数字把这一格排除出了雷的位置。");
+    });
+    return best;
+  }
+
+  function explainLocal(openArr, flagsArr) {
+    var found = {};
+    function add(i, mine, score, why) {
+      var prev = found[i];
+      if (!prev || score > prev.score) found[i] = { mine: mine, score: score, why: why };
+    }
+    var cons = [];
+    var n = rows * cols;
+    for (var i = 0; i < n; i++) {
+      if (!openArr[i] || !numbers || numbers[i] < 0) continue;
+      var nb = neigh[i];
+      var mineN = 0;
+      var cells = [];
+      for (var k = 0; k < nb.length; k++) {
+        var j = nb[k];
+        if (flagsArr[j]) mineN++;
+        else if (!openArr[j]) cells.push(j);
+      }
+      var need = numbers[i] - mineN;
+      if (!cells.length || need < 0 || need > cells.length) continue;
+      cons.push({ i: i, cells: cells, need: need, num: numbers[i] });
+      if (need === 0) {
+        for (var a = 0; a < cells.length; a++) add(cells[a], false, 100, "旁边的 " + numbers[i] + " 已经标满，其余都安全。");
+      } else if (need === cells.length) {
+        for (var b = 0; b < cells.length; b++) add(cells[b], true, 100, "旁边的 " + numbers[i] + " 还差 " + need + " 颗雷，未开格正好这么多。");
+      }
+    }
+    for (var a1 = 0; a1 < cons.length; a1++) {
+      for (var b1 = 0; b1 < cons.length; b1++) {
+        if (a1 === b1 || cons[a1].cells.length >= cons[b1].cells.length) continue;
+        var setA = {};
+        var sub = true;
+        for (var s = 0; s < cons[a1].cells.length; s++) {
+          setA[cons[a1].cells[s]] = 1;
+          var ok = false;
+          for (var s2 = 0; s2 < cons[b1].cells.length; s2++) if (cons[b1].cells[s2] === cons[a1].cells[s]) ok = true;
+          if (!ok) sub = false;
+        }
+        if (!sub) continue;
+        var diff = [];
+        for (var d = 0; d < cons[b1].cells.length; d++) if (!setA[cons[b1].cells[d]]) diff.push(cons[b1].cells[d]);
+        var needDiff = cons[b1].need - cons[a1].need;
+        if (!diff.length || needDiff < 0 || needDiff > diff.length) continue;
+        var isMine = needDiff === diff.length;
+        var isSafe = needDiff === 0;
+        if (!isMine && !isSafe) continue;
+        for (var u = 0; u < diff.length; u++) {
+          var phrase = patternWhy(cons[a1].i, cons[b1].i, diff[u], isMine, openArr);
+          var why = phrase || subsetWhy(cons[a1], cons[b1], diff.length, isMine);
+          add(diff[u], isMine, phrase ? 90 : 70, why);
+        }
+      }
+    }
+    return found;
+  }
+
+  function subsetWhy(small, big, extraCount, isMine) {
+    var one = extraCount === 1 ? "这一格" : "这几格";
+    if (isMine) return "数字 " + big.num + " 比数字 " + small.num + " 多看见" + one + "，多出来的正好是雷。";
+    return "数字 " + big.num + " 比数字 " + small.num + " 多看见" + one + "，雷数却没有增加，所以安全。";
+  }
+
+  function patternWhy(a, b, target, isMine, openArr) {
+    var ar = (a / cols) | 0;
+    var ac = a % cols;
+    var br = (b / cols) | 0;
+    var bc = b % cols;
+    if (ar !== br && ac !== bc) return "";
+    var horizontal = ar === br;
+    var cells = [];
+    if (horizontal) {
+      var c0 = ac;
+      while (c0 > 0 && openArr[ar * cols + c0 - 1] && numbers[ar * cols + c0 - 1] >= 0) c0--;
+      for (var c = c0; c < cols; c++) {
+        var id = ar * cols + c;
+        if (!openArr[id] || numbers[id] < 0) break;
+        cells.push(id);
+      }
+    } else {
+      var r0 = ar;
+      while (r0 > 0 && openArr[(r0 - 1) * cols + ac] && numbers[(r0 - 1) * cols + ac] >= 0) r0--;
+      for (var r = r0; r < rows; r++) {
+        var id2 = r * cols + ac;
+        if (!openArr[id2] || numbers[id2] < 0) break;
+        cells.push(id2);
+      }
+    }
+    var nums = [];
+    for (var n = 0; n < cells.length; n++) nums.push(numbers[cells[n]]);
+    var axis = horizontal ? "排" : "列";
+    var w4 = windowAt(nums, [1, 2, 2, 1]);
+    if (w4 >= 0 && patternSide(cells[w4], 4, target, horizontal, isMine, "1221")) {
+      return "这一" + axis + "是 1-2-2-1。" + (isMine ? "两个 2 正对的格子是雷。" : "两端正对的格子安全。");
+    }
+    var w3 = windowAt(nums, [1, 2, 1]);
+    if (w3 >= 0 && patternSide(cells[w3], 3, target, horizontal, isMine, "121")) {
+      return "这一" + axis + "是 1-2-1。" + (isMine ? "两侧是雷。" : "正中间安全。");
+    }
+    return "";
+  }
+
+  function windowAt(nums, pat) {
+    for (var i = 0; i + pat.length <= nums.length; i++) {
+      var ok = true;
+      for (var k = 0; k < pat.length; k++) if (nums[i + k] !== pat[k]) ok = false;
+      if (ok) return i;
+    }
+    return -1;
+  }
+
+  function patternSide(base, len, target, horizontal, isMine, kind) {
+    var br = (base / cols) | 0;
+    var bc = base % cols;
+    var tr = (target / cols) | 0;
+    var tc = target % cols;
+    var rel = horizontal ? tc - bc : tr - br;
+    var side = horizontal ? tr - br : tc - bc;
+    if (Math.abs(side) !== 1 || rel < 0 || rel >= len) return false;
+    if (kind === "1221") return isMine ? rel === 1 || rel === 2 : rel === 0 || rel === 3;
+    return isMine ? rel === 0 || rel === 2 : rel === 1;
   }
 
   function doAnalyze() {
@@ -712,18 +972,37 @@
   function statsHtml() {
     var wins = stats.games.filter(function (g) { return g.won; });
     var rate = stats.games.length ? Math.round(wins.length / stats.games.length * 100) : 0;
+    var avg = wins.length ? Math.round(wins.reduce(function (s, g) { return s + g.ms; }, 0) / wins.length) : 0;
+    var byDiff = {};
+    stats.games.forEach(function (g) {
+      if (!byDiff[g.diff]) byDiff[g.diff] = { n: 0, w: 0, ms: 0 };
+      byDiff[g.diff].n++;
+      if (g.won) { byDiff[g.diff].w++; byDiff[g.diff].ms += g.ms; }
+    });
+    var diffRows = Object.keys(byDiff).map(function (k) {
+      var d = byDiff[k];
+      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || k;
+      var wr = d.n ? Math.round(d.w / d.n * 100) : 0;
+      var am = d.w ? formatTime(Math.round(d.ms / d.w)) : "-";
+      return "<li>" + label + " 胜率 " + wr + "% · 平均 " + am + "</li>";
+    }).join("") || "<li>还没有对局</li>";
     var bestRows = Object.keys(stats.best).map(function (k) {
       var b = stats.best[k];
       return "<li>" + k + " 最佳 " + formatTime(b.ms) + " · 3BV/s " + b.bbvs + "</li>";
     }).join("") || "<li>还没有最佳成绩</li>";
+    var day = dailyKey();
+    var dailyBest = stats.daily && stats.daily[day];
+    var dailyLine = dailyBest
+      ? "<p>今日最佳 " + formatTime(dailyBest.ms) + " · 3BV/s " + dailyBest.bbvs + "</p>"
+      : "<p>今日挑战还没有成绩。</p>";
     var recent = stats.games.slice(-16);
     var max = 1;
     recent.forEach(function (g) { if (g.won && g.ms > max) max = g.ms; });
     var bars = recent.map(function (g) {
       var h = g.won ? Math.max(8, Math.round(g.ms / max * 100)) : 8;
-      return '<i style="height:' + h + '%;opacity:' + (g.won ? 1 : 0.35) + '"></i>';
+      return '<i style="height:' + h + '%;opacity:' + (g.won ? 1 : 0.35) + '" title="' + (g.won ? formatTime(g.ms) : "失败") + '"></i>';
     }).join("");
-    return '<div class="stats-list"><p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 连胜 ' + (stats.streak || 0) + '</p><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div><p class="hint">柱高是最近用时，浅色为失败。</p></div>';
+    return '<div class="stats-list"><p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' + dailyLine + '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div><p class="hint">柱高是最近用时，浅色为失败。</p></div>';
   }
 
   function shareHtml() {
@@ -821,28 +1100,68 @@
   });
   boardEl.addEventListener("pointerdown", function (e) {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      pan.active = false;
+      pan.x = e.clientX;
+      pan.y = e.clientY;
+      pan.sx = boardWrap.scrollLeft;
+      pan.sy = boardWrap.scrollTop;
+    }
     var btn = e.target.closest(".cell");
     if (!btn || e.button === 2) return;
     var i = Number(btn.dataset.i);
     pressTimer = setTimeout(function () {
       pressTimer = null;
+      if (pan.active) return;
       toggleFlag((i / cols) | 0, i % cols);
       suppress = true;
     }, 460);
   });
-  boardEl.addEventListener("pointerup", clearPress);
-  boardEl.addEventListener("pointercancel", clearPress);
+  boardEl.addEventListener("pointerup", function (e) {
+    pointers.delete(e.pointerId);
+    if (!pointers.size) {
+      pinchDist = 0;
+      if (pressTimer) clearTimeout(pressTimer);
+      pressTimer = null;
+      pan.active = false;
+    }
+  });
+  boardEl.addEventListener("pointercancel", function (e) {
+    pointers.delete(e.pointerId);
+    if (!pointers.size) {
+      pinchDist = 0;
+      if (pressTimer) clearTimeout(pressTimer);
+      pressTimer = null;
+      pan.active = false;
+    }
+  });
   boardEl.addEventListener("pointermove", function (e) {
     if (!pointers.has(e.pointerId)) return;
     var p = pointers.get(e.pointerId);
-    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) clearPress();
+    var dist = Math.hypot(e.clientX - p.x, e.clientY - p.y);
+    if (dist > 8) {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) pinch();
+    if (pointers.size === 2) {
+      pan.active = false;
+      pinch();
+      return;
+    }
+    if (pointers.size === 1 && (rows * cols > 120 || boardWrap.scrollWidth > boardWrap.clientWidth + 8)) {
+      var dx = e.clientX - pan.x;
+      var dy = e.clientY - pan.y;
+      if (Math.hypot(dx, dy) > 10) {
+        pan.active = true;
+        suppress = true;
+        boardWrap.scrollLeft = pan.sx - dx;
+        boardWrap.scrollTop = pan.sy - dy;
+      }
+    }
   });
   function clearPress() {
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = null;
-    pointers.clear();
   }
   var pinchDist = 0;
   function pinch() {
@@ -885,6 +1204,12 @@
   });
 
   function newGame() {
+    if (overlay.dataset.nextDiff && NG.DIFFS[overlay.dataset.nextDiff]) {
+      diffEl.value = overlay.dataset.nextDiff;
+      settings.diff = diffEl.value;
+      NG.saveSettings(settings);
+      delete overlay.dataset.nextDiff;
+    }
     resetBoard.ignoreHash = true;
     location.hash = "";
     resetBoard.ignoreHash = false;
@@ -921,10 +1246,16 @@
   $("resume-btn").onclick = togglePause;
   $("apply-custom").onclick = function () {
     var spec = currentSpec();
-    var minSafe = 9;
+    $("cw").value = String(spec.cols);
+    $("ch").value = String(spec.rows);
+    $("cm").value = String(spec.mines);
+    var minSafe = 1 + 8;
     if (spec.mines > spec.rows * spec.cols - minSafe) {
-      say("雷太多了。至少要留出首击和周围 8 格。");
+      say("雷太多了。至少要留出首击和周围格子。");
       return;
+    }
+    if (spec.rows * spec.cols > 1200) {
+      say("大棋盘已按可构造范围调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
     }
     newGame();
   };
