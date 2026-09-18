@@ -1,4 +1,4 @@
-var CACHE = "ng-minesweeper-v3";
+var CACHE = "ng-minesweeper-v4";
 var FILES = [
   "./",
   "./index.html",
@@ -7,6 +7,10 @@ var FILES = [
   "./icon.svg",
   "./version.json",
   "./cloud.json",
+  "./assets/flag.svg",
+  "./assets/mine.svg",
+  "./assets/spark.svg",
+  "./assets/boom.svg",
   "./js/util.js",
   "./js/solver.js",
   "./js/generate.js",
@@ -29,7 +33,6 @@ self.addEventListener("activate", function (event) {
 
 self.addEventListener("fetch", function (event) {
   var url = new URL(event.request.url);
-  // 版本与云配置始终走网络，避免被旧缓存挡住更新提示
   if (url.pathname.endsWith("/version.json") || url.pathname.endsWith("/cloud.json")) {
     event.respondWith(fetch(event.request).catch(function () { return caches.match(event.request); }));
     return;

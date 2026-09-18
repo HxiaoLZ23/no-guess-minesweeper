@@ -160,17 +160,35 @@ html[data-theme="dark"] input { background: #1b2326; }
 }
 .cell {
   width: var(--cell-size); height: var(--cell-size);
-  border: 0; border-radius: 8px;
+  border: 0; border-radius: 3px;
   background: linear-gradient(180deg, #f8f1e9, var(--cell));
   color: var(--ink); font: inherit; font-weight: 800;
   font-size: calc(var(--cell-size) * .42);
   display: grid; place-items: center; padding: 0;
+  position: relative;
+  transition: background .16s ease, transform .16s ease, box-shadow .16s ease, filter .16s ease;
 }
-html[data-theme="pixel"] .cell { border-radius: 0; }
-.cell.open { background: var(--cell-open); cursor: default; }
+html[data-theme="classic"] .cell { border-radius: 2px; }
+html[data-theme="pixel"] .cell { border-radius: 0; transition: none; }
+.cell.open {
+  background: var(--cell-open); cursor: default;
+  box-shadow: inset 0 0 0 1px rgba(60, 80, 84, .06);
+}
 .cell.flagged { color: var(--accent-deep); }
-.cell.mine { background: #f0d2ce; color: var(--danger); }
-.cell.hit { outline: 2px solid var(--danger); }
+.cell.flagged::before,
+.cell.mine::before {
+  content: "";
+  width: 68%; height: 68%;
+  background: center / contain no-repeat;
+  pointer-events: none;
+}
+.cell.flagged::before { background-image: url("assets/flag.svg"); }
+.cell.mine::before { background-image: url("assets/mine.svg"); }
+.cell.mine { background: #f0d2ce; color: transparent; }
+.cell.mine.hit {
+  outline: 2px solid var(--danger);
+  animation: mine-hit .55s ease;
+}
 .cell.cursor { outline: 2px solid var(--accent-deep); outline-offset: -2px; }
 .cell.start { box-shadow: inset 0 0 0 2px var(--accent); }
 .cell.hot { filter: brightness(1.08); }
@@ -178,6 +196,16 @@ html[data-theme="pixel"] .cell { border-radius: 0; }
 .cell.hint-mine { box-shadow: inset 0 0 0 2px var(--danger); }
 .cell.bad-flag { background: #f6d9a8; }
 .cell.prob { font-size: calc(var(--cell-size) * .32); color: var(--danger); }
+.cell.reveal {
+  animation: cell-reveal .34s cubic-bezier(.2, .8, .2, 1) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+.cell.flag-pop { animation: flag-pop .28s ease; }
+.cell.mine-pop {
+  animation: mine-pop .4s ease both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
 .n1 { color: #3d7cb8; } .n2 { color: #3e8f62; } .n3 { color: #c45b52; }
 .n4 { color: #5a4e9e; } .n5 { color: #a15a32; } .n6 { color: #2f8f96; }
 .n7 { color: #555; } .n8 { color: #888; }
@@ -192,15 +220,42 @@ html[data-palette="cb"] .n8 { color: #666; }
 .overlay {
   position: absolute; inset: 0; display: grid; place-items: center;
   background: rgba(236, 242, 240, .55); border-radius: inherit;
+  opacity: 0;
+  animation: overlay-in .38s ease forwards;
 }
+.overlay.lose-fx { background: rgba(240, 210, 206, .58); }
 html[data-theme="dark"] .overlay { background: rgba(10, 14, 16, .62); }
+html[data-theme="dark"] .overlay.lose-fx { background: rgba(40, 16, 16, .7); }
 .overlay.hidden, .hidden { display: none !important; }
 .overlay-card {
   width: min(320px, 88%); text-align: center;
-  background: var(--panel); border-radius: 16px; padding: 1.1rem 1rem;
+  background: var(--panel); border-radius: 12px; padding: 1.1rem 1rem;
+  transform: translateY(10px) scale(.96);
+  animation: card-in .42s cubic-bezier(.2, .8, .2, 1) .05s both;
 }
 .overlay-title { margin: 0; font-family: var(--display); font-size: 1.7rem; }
 .overlay-msg { color: var(--muted); }
+.fx-layer {
+  position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  border-radius: inherit; z-index: 2;
+}
+.fx-spark, .fx-boom {
+  position: absolute; width: 28px; height: 28px;
+  background: center / contain no-repeat;
+  animation: float-spark .9s ease-out forwards;
+}
+.fx-spark { background-image: url("assets/spark.svg"); }
+.fx-boom {
+  width: 44px; height: 44px;
+  background-image: url("assets/boom.svg");
+  animation: boom-burst .7s ease-out forwards;
+}
+.board-wrap.win-glow .board {
+  animation: board-win .7s ease;
+}
+.board-wrap.lose-dim .board {
+  animation: board-lose .55s ease;
+}
 .foot { justify-content: center; color: var(--muted); }
 .foot-note { font-size: .8rem; }
 .modal {
@@ -221,6 +276,54 @@ html[data-theme="dark"] .overlay { background: rgba(10, 14, 16, .62); }
 @keyframes shake {
   25% { transform: translateX(-2px); }
   75% { transform: translateX(2px); }
+}
+@keyframes cell-reveal {
+  0% { transform: scale(.72); opacity: 0; filter: brightness(1.25); }
+  70% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; filter: none; }
+}
+@keyframes flag-pop {
+  0% { transform: scale(.6) rotate(-12deg); }
+  70% { transform: scale(1.08) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes mine-pop {
+  0% { transform: scale(.4); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes mine-hit {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.18); filter: brightness(1.2); }
+  100% { transform: scale(1); }
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(14px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes float-spark {
+  0% { opacity: 0; transform: translate(0, 8px) scale(.4) rotate(0deg); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), var(--dy, -40px)) scale(1.1) rotate(40deg); }
+}
+@keyframes boom-burst {
+  0% { opacity: 0; transform: scale(.2); }
+  35% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+@keyframes board-win {
+  0% { filter: brightness(1); }
+  40% { filter: brightness(1.08); }
+  100% { filter: none; }
+}
+@keyframes board-lose {
+  0% { filter: brightness(1); }
+  35% { filter: brightness(.92) saturate(.85); }
+  100% { filter: none; }
 }
 @media (max-width: 720px) {
   .hud { grid-template-columns: 1fr auto 1fr; }
@@ -247,5 +350,20 @@ html[data-theme="dark"] .overlay { background: rgba(10, 14, 16, .62); }
   font-size: .9rem;
 }
 @media (prefers-reduced-motion: reduce) {
-  .shake { animation: none; }
+  .shake,
+  .cell.reveal,
+  .cell.flag-pop,
+  .cell.mine-pop,
+  .cell.mine.hit,
+  .overlay,
+  .overlay-card,
+  .fx-spark,
+  .fx-boom,
+  .board-wrap.win-glow .board,
+  .board-wrap.lose-dim .board {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1;
+    transform: none;
+  }
 }

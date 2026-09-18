@@ -133,6 +133,7 @@
     lessonText = "";
     replay.on = false;
     hide(overlay); hide(pauseLayer);
+    clearFx();
     $("face-btn").textContent = "◎";
     paintHud();
     renderGrid();
@@ -308,7 +309,20 @@
 
   function say(text) { statusEl.textContent = text; }
   function hide(el) { el.classList.add("hidden"); }
-  function show(el) { el.classList.remove("hidden"); }
+  function show(el) {
+    el.classList.remove("hidden");
+    if (el === overlay || el === pauseLayer) {
+      el.style.animation = "none";
+      void el.offsetWidth;
+      el.style.animation = "";
+      var card = el.querySelector(".overlay-card");
+      if (card) {
+        card.style.animation = "none";
+        void card.offsetWidth;
+        card.style.animation = "";
+      }
+    }
+  }
 
   function paintCursor() {
     for (var i = 0; i < boardEl.children.length; i++) boardEl.children[i].classList.remove("cursor");
@@ -320,26 +334,42 @@
     paintCursor();
   }
 
-  function paintCell(i) {
+  function motionOn() {
+    if (settings.motion === false) return false;
+    return !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function paintCell(i, opts) {
+    opts = opts || {};
     var el = btnAt(i);
     if (!el) return;
     var r = (i / cols) | 0, c = i % cols;
+    var keepHit = el.classList.contains("hit");
     el.className = "cell";
     el.textContent = "";
+    el.style.removeProperty("--reveal-delay");
     el.disabled = false;
     if (i === cursor) el.classList.add("cursor");
     if (!started && fixedStart && r === startR && c === startC) el.classList.add("start");
     if (flags[i] && !open[i]) {
       el.classList.add("flagged");
-      el.textContent = "⚑";
+      if (opts.flagPop && motionOn()) el.classList.add("flag-pop");
       if (showErr() && mines && !mines[i]) el.classList.add("bad-flag");
       return;
     }
     if (!open[i]) return;
     el.classList.add("open");
+    if (opts.reveal && motionOn()) {
+      el.classList.add("reveal");
+      el.style.setProperty("--reveal-delay", (opts.delay || 0) + "ms");
+    }
     if (numbers && numbers[i] < 0) {
       el.classList.add("mine");
-      el.textContent = "●";
+      if (opts.minePop && motionOn()) {
+        el.classList.add("mine-pop");
+        el.style.setProperty("--reveal-delay", (opts.delay || 0) + "ms");
+      }
+      if (keepHit || opts.hit) el.classList.add("hit");
       return;
     }
     var n = numbers ? numbers[i] : 0;
@@ -467,12 +497,18 @@
 
   function flood(i) {
     var stack = [i];
+    var originR = (i / cols) | 0;
+    var originC = i % cols;
+    var animate = motionOn();
     while (stack.length) {
       var cur = stack.pop();
       if (open[cur] || flags[cur] || !numbers || numbers[cur] < 0) continue;
       open[cur] = 1;
       openCount++;
-      paintCell(cur);
+      var cr = (cur / cols) | 0;
+      var cc = cur % cols;
+      var dist = Math.abs(cr - originR) + Math.abs(cc - originC);
+      paintCell(cur, animate ? { reveal: true, delay: Math.min(280, dist * 22) } : null);
       if (numbers[cur] === 0) neigh[cur].forEach(function (j) { stack.push(j); });
     }
   }
@@ -517,10 +553,12 @@
     var i = r * cols + c;
     if (open[i]) return;
     if (settings.mode !== "speed") pushUndo();
+    var placing = !flags[i];
     if (flags[i]) { flags[i] = 0; flagCount--; }
     else { flags[i] = 1; flagCount++; blip(340, 0.03); }
     actions.push({ t: Math.round(nowElapsed()), op: "flag", r: r, c: c });
-    paintCell(i); paintHud();
+    paintCell(i, placing ? { flagPop: true } : null);
+    paintHud();
     refreshAssist();
   }
 
@@ -543,12 +581,67 @@
     if (openCount + mineTotal >= rows * cols) win();
   }
 
+  function clearFx() {
+    var layer = $("fx-layer");
+    if (layer) layer.innerHTML = "";
+    boardWrap.classList.remove("win-glow", "lose-dim");
+    overlay.classList.remove("lose-fx");
+  }
+
+  function ensureFxLayer() {
+    var layer = $("fx-layer");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.id = "fx-layer";
+      layer.className = "fx-layer";
+      layer.setAttribute("aria-hidden", "true");
+      boardWrap.appendChild(layer);
+    }
+    return layer;
+  }
+
+  function spawnSparks(count) {
+    if (!motionOn()) return;
+    var layer = ensureFxLayer();
+    layer.innerHTML = "";
+    var rect = boardEl.getBoundingClientRect();
+    var wrap = boardWrap.getBoundingClientRect();
+    for (var n = 0; n < count; n++) {
+      var el = document.createElement("span");
+      el.className = "fx-spark";
+      var x = (rect.left - wrap.left) + Math.random() * rect.width;
+      var y = (rect.top - wrap.top) + Math.random() * rect.height * 0.7;
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      el.style.setProperty("--dx", ((Math.random() - 0.5) * 80) + "px");
+      el.style.setProperty("--dy", (-30 - Math.random() * 50) + "px");
+      el.style.animationDelay = (Math.random() * 180) + "ms";
+      layer.appendChild(el);
+    }
+    setTimeout(function () { if (layer) layer.innerHTML = ""; }, 1200);
+  }
+
+  function spawnBoomAt(i) {
+    if (!motionOn()) return;
+    var cell = btnAt(i);
+    if (!cell) return;
+    var layer = ensureFxLayer();
+    var cr = cell.getBoundingClientRect();
+    var wrap = boardWrap.getBoundingClientRect();
+    var el = document.createElement("span");
+    el.className = "fx-boom";
+    el.style.left = (cr.left - wrap.left + cr.width / 2 - 22) + "px";
+    el.style.top = (cr.top - wrap.top + cr.height / 2 - 22) + "px";
+    layer.appendChild(el);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 800);
+  }
+
   function win() {
     ended = true;
     stopTick();
     if (mines) {
       for (var i = 0; i < mines.length; i++) {
-        if (mines[i] && !flags[i]) { flags[i] = 1; flagCount++; paintCell(i); }
+        if (mines[i] && !flags[i]) { flags[i] = 1; flagCount++; paintCell(i, { flagPop: true }); }
       }
     }
     $("face-btn").textContent = "✿";
@@ -558,8 +651,14 @@
     say("通关。纯逻辑，没有歧义步。");
     $("overlay-title").textContent = "胜利";
     $("overlay-msg").textContent = "用时 " + formatTime(ms) + " · 3BV " + bbbv + " · 3BV/s " + bbvs + " · CPS " + cps;
+    overlay.classList.remove("lose-fx");
+    if (motionOn()) {
+      boardWrap.classList.add("win-glow");
+      spawnSparks(Math.min(18, 8 + ((rows * cols) / 40) | 0));
+    }
     show(overlay);
     blip(660, 0.04);
+    if (settings.sound) setTimeout(function () { blip(880, 0.03); }, 90);
     record(true, ms, bbvs, cps);
     maybeSubmitDaily(ms);
     maybeAutoBackup();
@@ -581,15 +680,32 @@
     ended = true;
     stopTick();
     open[i] = 1;
-    btnAt(i).classList.add("hit");
-    paintCell(i);
+    paintCell(i, { hit: true, minePop: true });
+    spawnBoomAt(i);
+    if (motionOn()) boardWrap.classList.add("lose-dim");
     if (mines) {
-      for (var k = 0; k < mines.length; k++) if (mines[k]) { open[k] = 1; paintCell(k); }
+      var hitR = (i / cols) | 0;
+      var hitC = i % cols;
+      var list = [];
+      for (var k = 0; k < mines.length; k++) {
+        if (!mines[k] || k === i) continue;
+        list.push(k);
+      }
+      list.sort(function (a, b) {
+        var ar = (a / cols) | 0, ac = a % cols;
+        var br = (b / cols) | 0, bc = b % cols;
+        return (Math.abs(ar - hitR) + Math.abs(ac - hitC)) - (Math.abs(br - hitR) + Math.abs(bc - hitC));
+      });
+      list.forEach(function (k, idx) {
+        open[k] = 1;
+        paintCell(k, motionOn() ? { minePop: true, delay: Math.min(420, 40 + idx * 28) } : { minePop: false });
+      });
     }
     $("face-btn").textContent = "✧";
     say("踩雷了。这盘本身可以推理完成。");
     $("overlay-title").textContent = "再试一次";
     $("overlay-msg").textContent = "无猜局面不会把你逼到 50/50。";
+    overlay.classList.add("lose-fx");
     show(overlay);
     record(false, Math.round(nowElapsed()), "0", "0");
     stats.streak = 0;
@@ -952,6 +1068,7 @@
       row("主题", '<select id="set-theme"><option value="soft">柔和</option><option value="classic">经典</option><option value="dark">暗色</option><option value="pixel">像素</option></select>') +
       row("配色", '<select id="set-palette"><option value="classic">经典数字色</option><option value="cb">色盲友好</option></select>') +
       row("音效", check("set-sound", settings.sound)) +
+      row("动画", check("set-motion", settings.motion !== false)) +
       row("确认翻开", check("set-confirm", settings.confirm)) +
       row("标出错旗", check("set-errors", settings.errors)) +
       row("无旗模式", check("set-noflag", settings.noFlag)) +
@@ -990,6 +1107,7 @@
     $("set-assist").onchange = function () { settings.assist = this.value; saveSet(); refreshAssist(); };
     $("set-mine").onchange = function () { settings.mineClick = this.value; saveSet(); };
     $("set-sound").onchange = function () { settings.sound = this.checked; saveSet(); };
+    $("set-motion").onchange = function () { settings.motion = this.checked; saveSet(); };
     $("set-confirm").onchange = function () { settings.confirm = this.checked; saveSet(); };
     $("set-errors").onchange = function () { settings.errors = this.checked; saveSet(); paintAll(); };
     $("set-noflag").onchange = function () { settings.noFlag = this.checked; saveSet(); };

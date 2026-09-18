@@ -7,7 +7,7 @@ var NG = window.NG || {};
  */
 NG.CLOUD_CFG_URL = "cloud.json";
 NG.VERSION_URL = "version.json";
-NG.APP_BUILD = 11;
+NG.APP_BUILD = 12;
 
 NG.defaultCloudSettings = function () {
   return {
