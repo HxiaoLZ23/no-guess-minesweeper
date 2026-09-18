@@ -916,7 +916,7 @@
       row("辅助", '<select id="set-assist"><option value="off">关闭</option><option value="hint">仅提示按钮</option><option value="safe">标出安全格</option><option value="prob">雷概率</option></select>') +
       row("踩雷", '<select id="set-mine"><option value="lose">直接结束</option><option value="block">拦住，不结束</option></select>') +
       row("格子", '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
-      '<p class="hint">进度可导出，换设备时再导入。实时对战、六边形和账号云同步不在这一版里。</p>' +
+      '<p class="hint">进度可导出，换设备时再导入。不做实时对战；在线账号 / 云同步有待商榷。远期计划 OpenShip 部署与本地下载两种交付。</p>' +
       '<div class="tools"><button type="button" class="text-btn" id="export-btn">导出进度</button><button type="button" class="text-btn" id="import-btn">导入进度</button></div>' +
       '</div>';
   }
