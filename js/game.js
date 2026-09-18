@@ -43,6 +43,13 @@
     document.querySelectorAll(".mode-btn").forEach(function (b) {
       b.classList.toggle("active", b.dataset.mode === settings.mode);
     });
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", settings.theme === "classic" || settings.theme === "pixel" ? "#7aa8a0" : "#152a45");
+    }
+    if (NG._ambiance) {
+      NG._ambiance.setEnabled(settings.motion !== false && (settings.theme === "soft" || settings.theme === "dark"));
+    }
   }
 
   function fillDiffs() {
@@ -142,7 +149,7 @@
     if (spec.kind === "lesson") setupLesson(spec.lesson);
     else if (spec.kind === "daily") setupSeeded(dailyKey(), spec);
     else if (location.hash.indexOf("s=") >= 0 && !resetBoard.ignoreHash) setupFromHash();
-    else say("左键翻开，右键插旗。第一次点击会从这里开始构造无猜局面。");
+    else say("左键翻开，右键插旗。点任意格开始。");
   }
 
   function dailyKey() {
@@ -178,7 +185,7 @@
     fixedStart = true;
     numbers = null;
     mines = null;
-    say("每日 / 种子局：正在构造同一局面…");
+    say("正在生成今日局面…");
     cellBtn(startR, startC).classList.add("start");
     generating = true;
     $("face-btn").textContent = "…";
@@ -192,13 +199,13 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!res.ok) {
-        say(res.reason || "这一局构造失败，请换难度或稍后再试。");
+        say(res.reason || "生成失败，请换难度或稍后再试。");
         return;
       }
       numbers = res.numbers;
       mines = res.mines;
       bbbv = res.bbbv;
-      say("每日 / 种子局：请从发光格子开始。已证明无猜 · 开口 " + res.opening + " · 3BV " + bbbv);
+      say("请从发光格子开始 · 开口 " + res.opening);
       paintAll();
       paintHud();
     }, 20);
@@ -433,7 +440,7 @@
       return;
     }
     generating = true;
-    say("正在用约束求解构造推理链…");
+    say("正在生成局面…");
     $("face-btn").textContent = "…";
     setTimeout(function () {
       var base = seed || ((Date.now() ^ (r * 131 + c)) >>> 0);
@@ -465,7 +472,7 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!best) {
-        say("这个雷密度构造不出无猜局面，请减少雷数或换一个起点。");
+        say("这个雷密度生成不了，请减少雷数或换一个起点。");
         return;
       }
       if (!fixedStart) seed = bestSeed;
@@ -477,7 +484,7 @@
       startTick();
       flood(NG.idx(r, c, cols));
       writeHash();
-      say("已证明无猜 · 开口 " + best.opening + " · 构造 " + Math.round(performance.now() - t0) + "ms · 3BV " + bbbv);
+      say("已开局 · 开口 " + best.opening);
       afterMove();
     }, 20);
   }
@@ -648,9 +655,9 @@
     var ms = Math.round(nowElapsed());
     var bbvs = ms > 0 ? (bbbv / (ms / 1000)).toFixed(2) : "0";
     var cps = ms > 0 ? (clickCount / (ms / 1000)).toFixed(2) : "0";
-    say("通关。纯逻辑，没有歧义步。");
+    say("通关。");
     $("overlay-title").textContent = "胜利";
-    $("overlay-msg").textContent = "用时 " + formatTime(ms) + " · 3BV " + bbbv + " · 3BV/s " + bbvs + " · CPS " + cps;
+    $("overlay-msg").textContent = "用时 " + formatTime(ms) + " · 3BV " + bbbv + " · 3BV/s " + bbvs;
     overlay.classList.remove("lose-fx");
     if (motionOn()) {
       boardWrap.classList.add("win-glow");
@@ -659,6 +666,8 @@
     show(overlay);
     blip(660, 0.04);
     if (settings.sound) setTimeout(function () { blip(880, 0.03); }, 90);
+    if (NG._ambiance) NG._ambiance.pulseBrand();
+    NG.tickHudGlow($("face-btn"));
     record(true, ms, bbvs, cps);
     maybeSubmitDaily(ms);
     maybeAutoBackup();
@@ -668,7 +677,7 @@
       NG.saveStats(stats);
       var next = NG.nextDiff(diffEl.value, 1);
       if (stats.streak >= 3 && next) {
-        say("已连胜 " + stats.streak + " 局。再来一局将升到「" + NG.DIFFS[next].label + "」。");
+        say("连胜 " + stats.streak + " 局，下一局升到「" + NG.DIFFS[next].label + "」。");
         overlay.dataset.nextDiff = next;
       } else {
         delete overlay.dataset.nextDiff;
@@ -702,9 +711,9 @@
       });
     }
     $("face-btn").textContent = "✧";
-    say("踩雷了。这盘本身可以推理完成。");
+    say("踩雷了。");
     $("overlay-title").textContent = "再试一次";
-    $("overlay-msg").textContent = "无猜局面不会把你逼到 50/50。";
+    $("overlay-msg").textContent = "可以重新开局。";
     overlay.classList.add("lose-fx");
     show(overlay);
     record(false, Math.round(nowElapsed()), "0", "0");
@@ -712,7 +721,7 @@
     stats.lossStreak = (stats.lossStreak || 0) + 1;
     var easier = NG.nextDiff(diffEl.value, -1);
     if (stats.lossStreak >= 3 && easier) {
-      say("连续未过。再来一局将降到「" + NG.DIFFS[easier].label + "」。");
+      say("连续未过，下一局降到「" + NG.DIFFS[easier].label + "」。");
       overlay.dataset.nextDiff = easier;
     } else {
       delete overlay.dataset.nextDiff;
@@ -822,13 +831,13 @@
   }
 
   function hint() {
-    if (!assistOn()) { say("竞速模式关闭了提示。"); return; }
+    if (!assistOn()) { say("竞速模式不能用提示。"); return; }
     var info = analyze();
     if (!info) { say("先翻开第一格。"); return; }
-    if (info.contradiction) { say("当前旗和数字矛盾，可能插错了。"); return; }
+    if (info.contradiction) { say("旗和数字矛盾，可能插错了。"); return; }
     var chain = buildChain(info, 3);
     if (!chain.length) {
-      say(info.guess.length ? "当前有 " + info.guess.length + " 个格子还不能唯一确定。" : "已经没有未知格了。");
+      say(info.guess.length ? "还有 " + info.guess.length + " 格暂时推不出来。" : "没有未知格了。");
       return;
     }
     chain.forEach(function (pick) {
@@ -837,7 +846,7 @@
     var first = chain[0];
     var head = "第 " + (((first.i / cols) | 0) + 1) + " 行第 " + ((first.i % cols) + 1) + " 列" + (first.mine ? "是雷。" : "安全。") + first.why;
     if (chain.length > 1) {
-      head += " 接下来还能确定 " + (chain.length - 1) + " 步。";
+      head += " 还可再推 " + (chain.length - 1) + " 步。";
     }
     say(head);
   }
@@ -1020,9 +1029,9 @@
     var info = analyze();
     if (!info) { say("先翻开第一格。"); return; }
     if (!info.safe.length && !info.mines.length && openCount + mineTotal < rows * cols) {
-      say("求解器认为当前需要猜测的格子：" + info.guess.length + "。无猜局在旗正确时应为 0。");
+      say("还不能唯一确定的格子：" + info.guess.length + "。");
     } else {
-      say("可确定安全 " + info.safe.length + "，可确定雷 " + info.mines.length + "，尚未唯一的格子 " + info.guess.length + "。");
+      say("可开 " + info.safe.length + " · 可标雷 " + info.mines.length + " · 未定 " + info.guess.length + "。");
     }
   }
 
@@ -1065,7 +1074,7 @@
   function settingsHtml() {
     var cloud = settings.cloud || NG.defaultCloudSettings();
     return '<div class="settings-grid">' +
-      row("主题", '<select id="set-theme"><option value="soft">柔和</option><option value="classic">经典</option><option value="dark">暗色</option><option value="pixel">像素</option></select>') +
+      row("主题", '<select id="set-theme"><option value="soft">静蓝护眼</option><option value="classic">经典</option><option value="dark">深空</option><option value="pixel">像素</option></select>') +
       row("配色", '<select id="set-palette"><option value="classic">经典数字色</option><option value="cb">色盲友好</option></select>') +
       row("音效", check("set-sound", settings.sound)) +
       row("动画", check("set-motion", settings.motion !== false)) +
@@ -1077,7 +1086,7 @@
       row("踩雷", '<select id="set-mine"><option value="lose">直接结束</option><option value="block">拦住，不结束</option></select>') +
       row("格子", '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
       '<hr class="soft-hr" />' +
-      '<p class="hint">在线（可选）· 不填端点则完全本地。不做实时对战。</p>' +
+      '<p class="hint">可选：填端点后可云备份、上每日榜。不填也能玩。</p>' +
       row("同步端点", '<input id="set-api" type="url" placeholder="https://api.example.com" value="' + escAttr(cloud.apiBase) + '">') +
       row("同步密钥", '<input id="set-key" type="password" autocomplete="off" placeholder="至少 8 位" value="' + escAttr(cloud.syncKey) + '">') +
       row("榜上昵称", '<input id="set-name" type="text" maxlength="24" value="' + escAttr(cloud.displayName) + '">') +
@@ -1088,7 +1097,7 @@
         '<button type="button" class="text-btn" id="export-btn">导出进度</button>' +
         '<button type="button" class="text-btn" id="import-btn">导入进度</button>' +
       '</div>' +
-      '<p class="hint" id="cloud-status">未连接云端时游戏照常可玩。</p>' +
+      '<p class="hint" id="cloud-status"></p>' +
       '</div>';
   }
   function escAttr(s) {
@@ -1102,12 +1111,16 @@
     $("set-palette").value = settings.palette;
     $("set-assist").value = settings.assist;
     $("set-mine").value = settings.mineClick;
-    $("set-theme").onchange = function () { settings.theme = this.value; saveSet(); };
+    $("set-theme").onchange = function () { settings.theme = this.value; saveSet(); if (NG._ambiance) NG._ambiance.pulseBrand(); };
     $("set-palette").onchange = function () { settings.palette = this.value; saveSet(); paintAll(); };
     $("set-assist").onchange = function () { settings.assist = this.value; saveSet(); refreshAssist(); };
     $("set-mine").onchange = function () { settings.mineClick = this.value; saveSet(); };
     $("set-sound").onchange = function () { settings.sound = this.checked; saveSet(); };
-    $("set-motion").onchange = function () { settings.motion = this.checked; saveSet(); };
+    $("set-motion").onchange = function () {
+      settings.motion = this.checked;
+      saveSet();
+      if (NG._ambiance) NG._ambiance.setEnabled(settings.motion && (settings.theme === "soft" || settings.theme === "dark"));
+    };
     $("set-confirm").onchange = function () { settings.confirm = this.checked; saveSet(); };
     $("set-errors").onchange = function () { settings.errors = this.checked; saveSet(); paintAll(); };
     $("set-noflag").onchange = function () { settings.noFlag = this.checked; saveSet(); };
@@ -1133,7 +1146,7 @@
         return;
       }
       if (!NG.cloudAvailable(settings)) {
-        $("cloud-status").textContent = "未配置同步端点（也可在 cloud.json 填写 apiBase）。";
+        $("cloud-status").textContent = "未配置同步端点。";
         return;
       }
       $("cloud-status").textContent = "正在上传…";
@@ -1158,17 +1171,17 @@
         var local = { settings: settings, stats: stats, at: Date.now() };
         var choice = "newer";
         if (remote.at && Math.abs((remote.at || 0) - local.at) > 1000) {
-          var msg = "云端 " + new Date(remote.at).toLocaleString() + " / 本地现在。\n确定=用较新的，取消=保留本地。";
-          if (!window.confirm(msg + "\n（按确定采用「较新覆盖」）")) choice = "local";
+          var msg = "云端 " + new Date(remote.at).toLocaleString() + "\n确定=用较新的，取消=保留本地。";
+          if (!window.confirm(msg)) choice = "local";
           else {
-            var useRemote = window.confirm("再用一次确定=强制用云端；取消=用较新的一方。");
+            var useRemote = window.confirm("确定=强制用云端；取消=用较新的一方。");
             choice = useRemote ? "remote" : "newer";
           }
         }
         var merged = NG.mergeBackupConflict(local, remote, choice);
         applyCloudPayload(merged);
-        $("cloud-status").textContent = "已合并备份（" + choice + "）。";
-        say("云备份已应用到本机。");
+        $("cloud-status").textContent = "已同步。";
+        say("已同步云备份。");
       }).catch(function (e) {
         $("cloud-status").textContent = "拉取失败：" + (e.message || e);
       });
@@ -1239,7 +1252,7 @@
       '<p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' +
       dailyLine +
       '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">刷新今日榜</button></div>' +
-      '<ol id="daily-board" class="daily-board"><li class="hint">配置云端后可查看公开榜；未配置时仅本地。</li></ol>' +
+      '<ol id="daily-board" class="daily-board"><li class="hint">打开云端后可看公开榜。</li></ol>' +
       '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div>' +
       '<p class="hint">柱高是最近用时，浅色为失败。</p></div>';
   }
@@ -1265,14 +1278,14 @@
       renderBoard(null, "加载中…");
       if (!NG.cloudAvailable(settings)) {
         var local = stats.daily && stats.daily[dailyKey()];
-        if (local) renderBoard([{ name: "我（本地）", ms: local.ms, mode: local.mode }]);
-        else renderBoard(null, "未配置云端，仅显示本地成绩。");
+        if (local) renderBoard([{ name: "我", ms: local.ms, mode: local.mode }]);
+        else renderBoard(null, "未开云端，只显示本地成绩。");
         return;
       }
       NG.fetchDailyBoard(settings, dayShort, "daily").then(function (data) {
         renderBoard(data.entries || []);
       }).catch(function () {
-        renderBoard(null, "榜暂时不可用，本地成绩不受影响。");
+        renderBoard(null, "榜暂时不可用。");
       });
     }
     btn.onclick = load;
@@ -1525,11 +1538,11 @@
     $("cm").value = String(spec.mines);
     var minSafe = 1 + 8;
     if (spec.mines > spec.rows * spec.cols - minSafe) {
-      say("雷太多了。至少要留出首击和周围格子。");
+      say("雷太多了，请少留几颗。");
       return;
     }
     if (spec.rows * spec.cols > 1200) {
-      say("大棋盘已按可构造范围调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
+      say("已调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
     }
     newGame();
   };
@@ -1565,6 +1578,9 @@
 
   fillDiffs();
   applyChrome();
+  NG.startAmbiance({
+    enabled: settings.motion !== false && (settings.theme === "soft" || settings.theme === "dark"),
+  });
   if (location.hash.indexOf("d=") >= 0) {
     var preset = new URLSearchParams(location.hash.slice(1)).get("d");
     if (preset && diffEl.querySelector('option[value="' + preset + '"]')) diffEl.value = preset;
@@ -1573,7 +1589,7 @@
     NG.installMockCloud();
   }
   resetBoard();
-  if (NG._mockCloud) say("已启用本地 Mock 云端（#mockCloud=1）。");
+  if (NG._mockCloud) say("已开启本地云端模拟。");
   bootstrapOnline();
 
   function bootstrapOnline() {

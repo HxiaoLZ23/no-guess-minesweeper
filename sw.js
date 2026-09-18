@@ -1,4 +1,4 @@
-var CACHE = "ng-minesweeper-v4";
+var CACHE = "ng-minesweeper-v5";
 var FILES = [
   "./",
   "./index.html",
@@ -16,6 +16,7 @@ var FILES = [
   "./js/generate.js",
   "./js/persist.js",
   "./js/cloud.js",
+  "./js/ambiance.js",
   "./js/game.js",
 ];
 

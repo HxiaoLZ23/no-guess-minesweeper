@@ -26,7 +26,7 @@ NG.generate = function (opts) {
   var start = startR * cols + startC;
   var minSafe = 1 + neigh[start].length;
   if (mineTarget < 1 || mineTarget > n - minSafe) {
-    return { ok: false, reason: "雷数超出无猜可构造范围（需为首击留出空白）" };
+    return { ok: false, reason: "雷太多了，请少留几颗" };
   }
 
   var started = now();
@@ -58,7 +58,7 @@ NG.generate = function (opts) {
     if (opening >= (deg <= 3 ? 8 : 12) || (best && attempts >= (deg <= 3 ? 4 : 2))) break;
   }
   if (!best) {
-    return { ok: false, reason: "这个雷密度构造不出无猜局面，请减少雷数或换一个起点", attempts: attempts };
+    return { ok: false, reason: "这个雷密度生成不了，请减少雷数或换起点", attempts: attempts };
   }
   var opening = best.opening || floodCount(neigh, best.numbers, start);
   return {

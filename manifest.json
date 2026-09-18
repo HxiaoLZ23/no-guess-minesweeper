@@ -3,8 +3,8 @@
   "short_name": "无猜扫雷",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#e7f0ea",
-  "theme_color": "#7aa8a0",
+  "background_color": "#0e1a2c",
+  "theme_color": "#152a45",
   "lang": "zh-CN",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }

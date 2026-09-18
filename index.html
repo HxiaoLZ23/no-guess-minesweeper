@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#7aa8a0" />
+  <meta name="theme-color" content="#152a45" />
   <title>无猜扫雷</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <div class="bg-wash" aria-hidden="true"></div>
   <main class="app">
     <header class="hero">
       <p class="brand">无猜扫雷</p>
-      <h1 class="tagline">每一步都能靠逻辑推出来</h1>
-      <p class="sub">约束构造 · 三档经典 · 打开即可玩</p>
+      <h1 class="tagline">不用猜，每一步都能推出来</h1>
+      <p class="sub">打开就能玩</p>
     </header>
 
     <section class="panel" aria-label="游戏控制">
@@ -59,7 +59,7 @@
         </div>
       </div>
 
-      <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键插旗。局面由推理链直接构造，不靠猜。</p>
+      <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键插旗。</p>
 
       <div class="tools">
         <button type="button" class="text-btn" id="hint-btn">提示</button>
@@ -93,7 +93,7 @@
       <button type="button" class="text-btn" id="open-stats">统计</button>
       <button type="button" class="text-btn" id="open-share">分享</button>
       <button type="button" class="text-btn" id="open-replay">复盘</button>
-      <span class="foot-note">方向键移动，空格翻开，F 插旗，Z 撤销</span>
+      <span class="foot-note">方向键 · 空格翻开 · F 插旗</span>
     </footer>
   </main>
 
@@ -109,9 +109,10 @@
 
   <script src="js/util.js?v=8"></script>
   <script src="js/solver.js?v=5"></script>
-  <script src="js/generate.js?v=11"></script>
+  <script src="js/generate.js?v=12"></script>
   <script src="js/persist.js?v=7"></script>
-  <script src="js/cloud.js?v=2"></script>
-  <script src="js/game.js?v=14"></script>
+  <script src="js/cloud.js?v=3"></script>
+  <script src="js/ambiance.js?v=1"></script>
+  <script src="js/game.js?v=16"></script>
 </body>
 </html>
