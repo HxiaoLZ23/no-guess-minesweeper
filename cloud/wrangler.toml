@@ -1,0 +1,7 @@
+name = "no-guess-minesweeper-api"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[[kv_namespaces]]
+binding = "NG_KV"
+id = "replace-with-your-kv-namespace-id"

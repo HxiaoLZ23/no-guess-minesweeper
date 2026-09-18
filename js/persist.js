@@ -19,6 +19,13 @@ NG.defaultSettings = function () {
     largeText: false,
     mode: "practice",
     diff: "easy",
+    cloud: {
+      apiBase: "",
+      syncKey: "",
+      displayName: "",
+      autoBackup: false,
+      skipVersion: "",
+    },
   };
 };
 
@@ -26,7 +33,13 @@ NG.loadSettings = function () {
   var base = NG.defaultSettings();
   try {
     var raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-    for (var k in base) if (raw[k] !== undefined) base[k] = raw[k];
+    for (var k in base) {
+      if (k === "cloud") continue;
+      if (raw[k] !== undefined) base[k] = raw[k];
+    }
+    if (raw.cloud && typeof raw.cloud === "object") {
+      for (var ck in base.cloud) if (raw.cloud[ck] !== undefined) base.cloud[ck] = raw.cloud[ck];
+    }
   } catch (e) { /* ignore */ }
   return base;
 };

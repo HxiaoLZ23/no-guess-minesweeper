@@ -1,6 +1,7 @@
 /* global NG */
 (function () {
   var settings = NG.loadSettings();
+  NG.mergeCloudSettings(settings);
   var stats = NG.loadStats();
   var diffEl = document.getElementById("diff");
   var lessonEl = document.getElementById("lesson");
@@ -560,6 +561,8 @@
     show(overlay);
     blip(660, 0.04);
     record(true, ms, bbvs, cps);
+    maybeSubmitDaily(ms);
+    maybeAutoBackup();
     if (settings.mode !== "zen") {
       stats.streak = (stats.streak || 0) + 1;
       stats.lossStreak = 0;
@@ -599,6 +602,45 @@
       delete overlay.dataset.nextDiff;
     }
     NG.saveStats(stats);
+  }
+
+  function maybeSubmitDaily(ms) {
+    if (diffEl.value !== "daily") return;
+    if (!NG.cloudAvailable(settings)) return;
+    var entry = {
+      day: dailyKey().split("-").slice(0, 3).join("-"),
+      diff: "daily",
+      mode: settings.mode,
+      ms: ms,
+      seed: seed,
+      startR: startR,
+      startC: startC,
+      bbbv: bbbv,
+      name: (settings.cloud && settings.cloud.displayName) || "匿名",
+    };
+    NG.submitDaily(settings, entry).then(function (res) {
+      say("已提交今日成绩" + (res.rank ? " · 第 " + res.rank + " 名" : "") + "。");
+    }).catch(function () {
+      /* 榜挂了不影响通关 */
+    });
+  }
+
+  function maybeAutoBackup() {
+    if (!settings.cloud || !settings.cloud.autoBackup) return;
+    if (!NG.cloudAvailable(settings) || !(settings.cloud.syncKey || "").length) return;
+    NG.pushBackup(settings, stats).catch(function () {});
+  }
+
+  function applyCloudPayload(data) {
+    if (data.settings) {
+      settings = Object.assign(NG.defaultSettings(), data.settings);
+      NG.mergeCloudSettings(settings);
+    }
+    if (data.stats) stats = data.stats;
+    NG.saveSettings(settings);
+    NG.saveStats(stats);
+    cellSize = settings.cell || cellSize;
+    applyChrome();
   }
 
   function record(won, ms, bbvs, cps) {
@@ -905,6 +947,7 @@
   }
 
   function settingsHtml() {
+    var cloud = settings.cloud || NG.defaultCloudSettings();
     return '<div class="settings-grid">' +
       row("主题", '<select id="set-theme"><option value="soft">柔和</option><option value="classic">经典</option><option value="dark">暗色</option><option value="pixel">像素</option></select>') +
       row("配色", '<select id="set-palette"><option value="classic">经典数字色</option><option value="cb">色盲友好</option></select>') +
@@ -916,9 +959,23 @@
       row("辅助", '<select id="set-assist"><option value="off">关闭</option><option value="hint">仅提示按钮</option><option value="safe">标出安全格</option><option value="prob">雷概率</option></select>') +
       row("踩雷", '<select id="set-mine"><option value="lose">直接结束</option><option value="block">拦住，不结束</option></select>') +
       row("格子", '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
-      '<p class="hint">进度可导出，换设备时再导入。不做实时对战；在线账号 / 云同步有待商榷。远期计划 OpenShip 部署与本地下载两种交付。</p>' +
-      '<div class="tools"><button type="button" class="text-btn" id="export-btn">导出进度</button><button type="button" class="text-btn" id="import-btn">导入进度</button></div>' +
+      '<hr class="soft-hr" />' +
+      '<p class="hint">在线（可选）· 不填端点则完全本地。不做实时对战。</p>' +
+      row("同步端点", '<input id="set-api" type="url" placeholder="https://api.example.com" value="' + escAttr(cloud.apiBase) + '">') +
+      row("同步密钥", '<input id="set-key" type="password" autocomplete="off" placeholder="至少 8 位" value="' + escAttr(cloud.syncKey) + '">') +
+      row("榜上昵称", '<input id="set-name" type="text" maxlength="24" value="' + escAttr(cloud.displayName) + '">') +
+      row("通关后备份", check("set-autobackup", cloud.autoBackup)) +
+      '<div class="tools">' +
+        '<button type="button" class="text-btn" id="cloud-push">上传备份</button>' +
+        '<button type="button" class="text-btn" id="cloud-pull">拉取备份</button>' +
+        '<button type="button" class="text-btn" id="export-btn">导出进度</button>' +
+        '<button type="button" class="text-btn" id="import-btn">导入进度</button>' +
+      '</div>' +
+      '<p class="hint" id="cloud-status">未连接云端时游戏照常可玩。</p>' +
       '</div>';
+  }
+  function escAttr(s) {
+    return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   }
   function row(name, control) { return "<label><span>" + name + "</span>" + control + "</label>"; }
   function check(id, on) { return '<input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + ">"; }
@@ -937,7 +994,67 @@
     $("set-errors").onchange = function () { settings.errors = this.checked; saveSet(); paintAll(); };
     $("set-noflag").onchange = function () { settings.noFlag = this.checked; saveSet(); };
     $("set-large").onchange = function () { settings.largeText = this.checked; saveSet(); };
-    $("set-cell").oninput = function () { cellSize = Number(this.value); applyChrome(); };
+    $("set-cell").oninput = function () { cellSize = Number(this.value); settings.cell = cellSize; applyChrome(); };
+    function saveCloudFields() {
+      settings.cloud = settings.cloud || NG.defaultCloudSettings();
+      settings.cloud.apiBase = ($("set-api").value || "").trim().replace(/\/$/, "");
+      settings.cloud.syncKey = ($("set-key").value || "").trim();
+      settings.cloud.displayName = ($("set-name").value || "").trim();
+      settings.cloud.autoBackup = $("set-autobackup").checked;
+      saveSet();
+    }
+    ["set-api", "set-key", "set-name"].forEach(function (id) {
+      $(id).onchange = saveCloudFields;
+      $(id).onblur = saveCloudFields;
+    });
+    $("set-autobackup").onchange = saveCloudFields;
+    $("cloud-push").onclick = function () {
+      saveCloudFields();
+      if (!(settings.cloud.syncKey || "").length || settings.cloud.syncKey.length < 8) {
+        $("cloud-status").textContent = "请先填写至少 8 位同步密钥。";
+        return;
+      }
+      if (!NG.cloudAvailable(settings)) {
+        $("cloud-status").textContent = "未配置同步端点（也可在 cloud.json 填写 apiBase）。";
+        return;
+      }
+      $("cloud-status").textContent = "正在上传…";
+      NG.pushBackup(settings, stats).then(function (res) {
+        $("cloud-status").textContent = "已上传 · " + new Date(res.at || Date.now()).toLocaleString();
+      }).catch(function (e) {
+        $("cloud-status").textContent = "上传失败：" + (e.message || e);
+      });
+    };
+    $("cloud-pull").onclick = function () {
+      saveCloudFields();
+      if (!(settings.cloud.syncKey || "").length || settings.cloud.syncKey.length < 8) {
+        $("cloud-status").textContent = "请先填写同步密钥。";
+        return;
+      }
+      if (!NG.cloudAvailable(settings)) {
+        $("cloud-status").textContent = "未配置同步端点。";
+        return;
+      }
+      $("cloud-status").textContent = "正在拉取…";
+      NG.pullBackup(settings).then(function (remote) {
+        var local = { settings: settings, stats: stats, at: Date.now() };
+        var choice = "newer";
+        if (remote.at && Math.abs((remote.at || 0) - local.at) > 1000) {
+          var msg = "云端 " + new Date(remote.at).toLocaleString() + " / 本地现在。\n确定=用较新的，取消=保留本地。";
+          if (!window.confirm(msg + "\n（按确定采用「较新覆盖」）")) choice = "local";
+          else {
+            var useRemote = window.confirm("再用一次确定=强制用云端；取消=用较新的一方。");
+            choice = useRemote ? "remote" : "newer";
+          }
+        }
+        var merged = NG.mergeBackupConflict(local, remote, choice);
+        applyCloudPayload(merged);
+        $("cloud-status").textContent = "已合并备份（" + choice + "）。";
+        say("云备份已应用到本机。");
+      }).catch(function (e) {
+        $("cloud-status").textContent = "拉取失败：" + (e.message || e);
+      });
+    };
     $("export-btn").onclick = function () {
       var blob = new Blob([NG.exportPayload(settings, stats)], { type: "application/json" });
       var a = document.createElement("a");
@@ -955,10 +1072,7 @@
         var reader = new FileReader();
         reader.onload = function () {
           var data = JSON.parse(String(reader.result));
-          if (data.settings) settings = Object.assign(NG.defaultSettings(), data.settings);
-          if (data.stats) stats = data.stats;
-          NG.saveSettings(settings); NG.saveStats(stats);
-          applyChrome();
+          applyCloudPayload(data);
           say("进度已导入。");
           hide(modal);
         };
@@ -991,10 +1105,11 @@
       return "<li>" + k + " 最佳 " + formatTime(b.ms) + " · 3BV/s " + b.bbvs + "</li>";
     }).join("") || "<li>还没有最佳成绩</li>";
     var day = dailyKey();
+    var dayShort = day.split("-").slice(0, 3).join("-");
     var dailyBest = stats.daily && stats.daily[day];
     var dailyLine = dailyBest
-      ? "<p>今日最佳 " + formatTime(dailyBest.ms) + " · 3BV/s " + dailyBest.bbvs + "</p>"
-      : "<p>今日挑战还没有成绩。</p>";
+      ? "<p>今日本地最佳 " + formatTime(dailyBest.ms) + " · 3BV/s " + dailyBest.bbvs + "</p>"
+      : "<p>今日挑战还没有本地成绩。</p>";
     var recent = stats.games.slice(-16);
     var max = 1;
     recent.forEach(function (g) { if (g.won && g.ms > max) max = g.ms; });
@@ -1002,7 +1117,48 @@
       var h = g.won ? Math.max(8, Math.round(g.ms / max * 100)) : 8;
       return '<i style="height:' + h + '%;opacity:' + (g.won ? 1 : 0.35) + '" title="' + (g.won ? formatTime(g.ms) : "失败") + '"></i>';
     }).join("");
-    return '<div class="stats-list"><p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' + dailyLine + '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div><p class="hint">柱高是最近用时，浅色为失败。</p></div>';
+    return '<div class="stats-list">' +
+      '<p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' +
+      dailyLine +
+      '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">刷新今日榜</button></div>' +
+      '<ol id="daily-board" class="daily-board"><li class="hint">配置云端后可查看公开榜；未配置时仅本地。</li></ol>' +
+      '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div>' +
+      '<p class="hint">柱高是最近用时，浅色为失败。</p></div>';
+  }
+
+  function bindStats() {
+    var btn = $("load-daily-board");
+    if (!btn) return;
+    var dayShort = dailyKey().split("-").slice(0, 3).join("-");
+    function renderBoard(entries, note) {
+      var el = $("daily-board");
+      if (!el) return;
+      if (note) { el.innerHTML = "<li class=\"hint\">" + note + "</li>"; return; }
+      if (!entries || !entries.length) {
+        el.innerHTML = "<li class=\"hint\">今日榜还是空的。</li>";
+        return;
+      }
+      el.innerHTML = entries.map(function (e, i) {
+        return "<li>" + (i + 1) + ". " + (e.name || "匿名") + " · " + formatTime(e.ms) +
+          (e.mode ? " · " + e.mode : "") + "</li>";
+      }).join("");
+    }
+    function load() {
+      renderBoard(null, "加载中…");
+      if (!NG.cloudAvailable(settings)) {
+        var local = stats.daily && stats.daily[dailyKey()];
+        if (local) renderBoard([{ name: "我（本地）", ms: local.ms, mode: local.mode }]);
+        else renderBoard(null, "未配置云端，仅显示本地成绩。");
+        return;
+      }
+      NG.fetchDailyBoard(settings, dayShort, "daily").then(function (data) {
+        renderBoard(data.entries || []);
+      }).catch(function () {
+        renderBoard(null, "榜暂时不可用，本地成绩不受影响。");
+      });
+    }
+    btn.onclick = load;
+    load();
   }
 
   function shareHtml() {
@@ -1260,7 +1416,7 @@
     newGame();
   };
   $("open-settings").onclick = function () { openModal("设置", settingsHtml()); bindSettings(); };
-  $("open-stats").onclick = function () { openModal("统计", statsHtml()); };
+  $("open-stats").onclick = function () { openModal("统计", statsHtml()); bindStats(); };
   $("open-share").onclick = function () {
     if (started) writeHash();
     openModal("分享", shareHtml());
@@ -1295,5 +1451,39 @@
     var preset = new URLSearchParams(location.hash.slice(1)).get("d");
     if (preset && diffEl.querySelector('option[value="' + preset + '"]')) diffEl.value = preset;
   }
+  if (/[#&?]mockCloud=1/.test(location.href)) {
+    NG.installMockCloud();
+  }
   resetBoard();
+  if (NG._mockCloud) say("已启用本地 Mock 云端（#mockCloud=1）。");
+  bootstrapOnline();
+
+  function bootstrapOnline() {
+    NG.loadCloudConfig().then(function () {
+      return NG.checkVersion(settings);
+    }).then(function (info) {
+      if (!info || !info.newer || !info.remote) return;
+      showVersionBanner(info.remote);
+    });
+  }
+
+  function showVersionBanner(remote) {
+    var bar = document.createElement("div");
+    bar.className = "version-banner";
+    bar.setAttribute("role", "status");
+    bar.innerHTML = "<span>有新版本 " + (remote.version || "") + "：" + (remote.notes || "可更新") +
+      "</span><span class=\"tools\">" +
+      "<button type=\"button\" class=\"text-btn\" id=\"ver-dismiss\">稍后</button>" +
+      "<button type=\"button\" class=\"text-btn\" id=\"ver-skip\">跳过此版</button>" +
+      "<button type=\"button\" class=\"text-btn\" id=\"ver-reload\">刷新</button></span>";
+    document.body.appendChild(bar);
+    $("ver-dismiss").onclick = function () { bar.remove(); };
+    $("ver-skip").onclick = function () {
+      settings.cloud = settings.cloud || NG.defaultCloudSettings();
+      settings.cloud.skipVersion = String(remote.version || "");
+      NG.saveSettings(settings);
+      bar.remove();
+    };
+    $("ver-reload").onclick = function () { location.reload(); };
+  }
 })();
