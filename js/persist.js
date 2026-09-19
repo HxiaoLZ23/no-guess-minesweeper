@@ -19,6 +19,8 @@ NG.defaultSettings = function () {
     largeText: false,
     mode: "practice",
     diff: "easy",
+    lessonIndex: 0,
+    campaignBest: 0,
     cloud: {
       apiBase: "",
       syncKey: "",

@@ -74,7 +74,7 @@
     ["daily", "custom", "lesson"].forEach(function (id) {
       var o = document.createElement("option");
       o.value = id;
-      o.textContent = { daily: "每日挑战", custom: "自定义", lesson: "教学关卡" }[id];
+      o.textContent = { daily: "每日挑战", custom: "自定义", lesson: "闯关模式" }[id];
       diffEl.appendChild(o);
     });
     diffEl.value = settings.diff || "easy";
@@ -82,9 +82,11 @@
     NG.LESSONS.forEach(function (ls, i) {
       var o = document.createElement("option");
       o.value = String(i);
-      o.textContent = ls.title;
+      o.textContent = NG.lessonLabel(ls, i);
       lessonEl.appendChild(o);
     });
+    var li = NG.clamp(settings.lessonIndex | 0, 0, NG.LESSONS.length - 1);
+    lessonEl.value = String(li);
   }
 
   function currentSpec() {
@@ -110,7 +112,11 @@
     }
     if (id === "lesson") {
       var ls = NG.LESSONS[Number(lessonEl.value) || 0];
-      return { kind: "lesson", id: "lesson", label: ls.title, rows: ls.rows, cols: ls.cols, mines: ls.mines.length, cell: 40, lesson: ls };
+      return {
+        kind: "lesson", id: "lesson", label: ls.title,
+        rows: ls.rows, cols: ls.cols, mines: ls.mines.length,
+        cell: ls.cell || 40, lesson: ls,
+      };
     }
     var base = NG.DIFFS.medium;
     return Object.assign({ kind: "daily", id: "daily", label: "每日" }, base);
@@ -212,7 +218,8 @@
   }
 
   function setupLesson(ls) {
-    lessonText = ls.title + "：" + ls.text;
+    var idx = Number(lessonEl.value) || 0;
+    lessonText = "第 " + (idx + 1) + " 关 · " + ls.title + "：" + ls.text;
     var built = minesToBoard(ls.rows, ls.cols, ls.mines);
     numbers = built.numbers;
     mines = built.mines;
@@ -220,7 +227,8 @@
     startR = ls.startR; startC = ls.startC;
     fixedStart = true;
     seed = NG.hashSeed(ls.id);
-    if (!ls.forceOpen && !NG.proveSolvable(rows, cols, numbers, NG.idx(startR, startC, cols))) {
+    var start = NG.idx(startR, startC, cols);
+    if (!NG.proveSolvable(rows, cols, numbers, start, ls.forceOpen || null)) {
       say("这一关布局有问题。");
       return;
     }
@@ -234,7 +242,7 @@
         }
       });
     } else {
-      flood(NG.idx(startR, startC, cols));
+      flood(start);
     }
     say(lessonText);
     paintAll();
@@ -567,6 +575,7 @@
     paintCell(i, placing ? { flagPop: true } : null);
     paintHud();
     refreshAssist();
+    if (openCount + mineTotal >= rows * cols) win();
   }
 
   function chord(r, c) {
@@ -643,6 +652,17 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 800);
   }
 
+  function winSummary(ms) {
+    var parts = ["用时 " + formatTime(ms)];
+    if (settings.mode === "speed") parts.push("点了 " + clickCount + " 次");
+    if (bbbv > 0 && ms > 0) {
+      var pace = (ms / 1000) / bbbv;
+      if (pace < 2.5) parts.push("推得很快");
+      else if (pace < 5) parts.push("节奏不错");
+    }
+    return parts.join(" · ");
+  }
+
   function win() {
     ended = true;
     stopTick();
@@ -655,9 +675,28 @@
     var ms = Math.round(nowElapsed());
     var bbvs = ms > 0 ? (bbbv / (ms / 1000)).toFixed(2) : "0";
     var cps = ms > 0 ? (clickCount / (ms / 1000)).toFixed(2) : "0";
-    say("通关。");
-    $("overlay-title").textContent = "胜利";
-    $("overlay-msg").textContent = "用时 " + formatTime(ms) + " · 3BV " + bbbv + " · 3BV/s " + bbvs;
+    var inCampaign = diffEl.value === "lesson";
+    var lessonIdx = Number(lessonEl.value) || 0;
+    var hasNext = inCampaign && lessonIdx < NG.LESSONS.length - 1;
+    say(inCampaign ? "本关通过。" : "通关。");
+    if (inCampaign) {
+      $("overlay-title").textContent = "第 " + (lessonIdx + 1) + " 关通过";
+      var nextHint = hasNext
+        ? "下一关：" + NG.LESSONS[lessonIdx + 1].title
+        : "闯关全部完成，可以去挑战更大的盘面。";
+      $("overlay-msg").textContent = winSummary(ms) + "。" + nextHint;
+      $("again-btn").textContent = hasNext ? "下一关" : "再玩本关";
+      if (hasNext) overlay.dataset.nextLesson = String(lessonIdx + 1);
+      else delete overlay.dataset.nextLesson;
+      delete overlay.dataset.nextDiff;
+      settings.campaignBest = Math.max(settings.campaignBest | 0, lessonIdx + 1);
+      NG.saveSettings(settings);
+    } else {
+      $("overlay-title").textContent = "胜利";
+      $("overlay-msg").textContent = winSummary(ms) + "。";
+      $("again-btn").textContent = "再来一局";
+      delete overlay.dataset.nextLesson;
+    }
     overlay.classList.remove("lose-fx");
     if (motionOn()) {
       boardWrap.classList.add("win-glow");
@@ -671,7 +710,7 @@
     record(true, ms, bbvs, cps);
     maybeSubmitDaily(ms);
     maybeAutoBackup();
-    if (settings.mode !== "zen") {
+    if (!inCampaign && settings.mode !== "zen") {
       stats.streak = (stats.streak || 0) + 1;
       stats.lossStreak = 0;
       NG.saveStats(stats);
@@ -714,6 +753,8 @@
     say("踩雷了。");
     $("overlay-title").textContent = "再试一次";
     $("overlay-msg").textContent = "可以重新开局。";
+    $("again-btn").textContent = "再来一局";
+    delete overlay.dataset.nextLesson;
     overlay.classList.add("lose-fx");
     show(overlay);
     record(false, Math.round(nowElapsed()), "0", "0");
@@ -1226,21 +1267,26 @@
     });
     var diffRows = Object.keys(byDiff).map(function (k) {
       var d = byDiff[k];
-      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || k;
+      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || ({ lesson: "闯关", daily: "每日", custom: "自定义" }[k] || k);
       var wr = d.n ? Math.round(d.w / d.n * 100) : 0;
       var am = d.w ? formatTime(Math.round(d.ms / d.w)) : "-";
       return "<li>" + label + " 胜率 " + wr + "% · 平均 " + am + "</li>";
     }).join("") || "<li>还没有对局</li>";
     var bestRows = Object.keys(stats.best).map(function (k) {
       var b = stats.best[k];
-      return "<li>" + k + " 最佳 " + formatTime(b.ms) + " · 3BV/s " + b.bbvs + "</li>";
+      var label = (NG.DIFFS[k.split(":")[0]] && NG.DIFFS[k.split(":")[0]].label) || k;
+      if (k.indexOf("lesson") === 0) label = "闯关";
+      return "<li>" + label + " 最佳 " + formatTime(b.ms) + "</li>";
     }).join("") || "<li>还没有最佳成绩</li>";
     var day = dailyKey();
     var dayShort = day.split("-").slice(0, 3).join("-");
     var dailyBest = stats.daily && stats.daily[day];
     var dailyLine = dailyBest
-      ? "<p>今日本地最佳 " + formatTime(dailyBest.ms) + " · 3BV/s " + dailyBest.bbvs + "</p>"
+      ? "<p>今日本地最佳 " + formatTime(dailyBest.ms) + "</p>"
       : "<p>今日挑战还没有本地成绩。</p>";
+    var campaignLine = (settings.campaignBest | 0) > 0
+      ? "<p>闯关进度：已通过 " + (settings.campaignBest | 0) + " / " + NG.LESSONS.length + " 关</p>"
+      : "<p>闯关进度：尚未通关</p>";
     var recent = stats.games.slice(-16);
     var max = 1;
     recent.forEach(function (g) { if (g.won && g.ms > max) max = g.ms; });
@@ -1250,6 +1296,7 @@
     }).join("");
     return '<div class="stats-list">' +
       '<p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' +
+      campaignLine +
       dailyLine +
       '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">刷新今日榜</button></div>' +
       '<ol id="daily-board" class="daily-board"><li class="hint">打开云端后可看公开榜。</li></ol>' +
@@ -1491,12 +1538,18 @@
   });
 
   function newGame() {
-    if (overlay.dataset.nextDiff && NG.DIFFS[overlay.dataset.nextDiff]) {
+    if (overlay.dataset.nextLesson != null) {
+      lessonEl.value = overlay.dataset.nextLesson;
+      settings.lessonIndex = Number(lessonEl.value) || 0;
+      NG.saveSettings(settings);
+      delete overlay.dataset.nextLesson;
+    } else if (overlay.dataset.nextDiff && NG.DIFFS[overlay.dataset.nextDiff]) {
       diffEl.value = overlay.dataset.nextDiff;
       settings.diff = diffEl.value;
       NG.saveSettings(settings);
       delete overlay.dataset.nextDiff;
     }
+    $("again-btn").textContent = "再来一局";
     resetBoard.ignoreHash = true;
     location.hash = "";
     resetBoard.ignoreHash = false;
@@ -1508,7 +1561,11 @@
     NG.saveSettings(settings);
     newGame();
   };
-  lessonEl.onchange = newGame;
+  lessonEl.onchange = function () {
+    settings.lessonIndex = Number(lessonEl.value) || 0;
+    NG.saveSettings(settings);
+    newGame();
+  };
   document.querySelectorAll(".mode-btn").forEach(function (b) {
     b.onclick = function () {
       settings.mode = b.dataset.mode;
