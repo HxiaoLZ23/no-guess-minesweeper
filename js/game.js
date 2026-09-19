@@ -2,6 +2,12 @@
 (function () {
   var settings = NG.loadSettings();
   NG.mergeCloudSettings(settings);
+  if (settings.campaignSet !== "ladder") {
+    settings.campaignBest = 0;
+    settings.campaignIndex = 0;
+    settings.campaignSet = "ladder";
+    NG.saveSettings(settings);
+  }
   var stats = NG.loadStats();
   var diffEl = document.getElementById("diff");
   var lessonEl = document.getElementById("lesson");
@@ -74,11 +80,16 @@
     var modeName = { practice: "练习", speed: "竞速", zen: "禅" }[settings.mode] || "练习";
     var id = diffEl.value;
     var d = NG.DIFFS[id];
-    var board = d ? d.label : ({ daily: "每日挑战", custom: "自定义", lesson: "闯关" }[id] || "");
+    var board = d ? d.label : ({ daily: "每日挑战", custom: "自定义", lesson: "教学", campaign: "闯关" }[id] || "");
     if (id === "lesson") {
       var i = Number(lessonEl.value) || 0;
       var ls = NG.LESSONS[i];
       if (ls) board = "第 " + (i + 1) + " 关 · " + ls.title;
+    }
+    if (id === "campaign") {
+      var ci = settings.campaignIndex | 0;
+      var st = NG.CAMPAIGN[ci];
+      if (st) board = "第 " + (ci + 1) + " 关 · " + st.chapter + " " + st.title;
     }
     return modeName + " · " + board;
   }
@@ -92,7 +103,7 @@
 
   function armRace() {
     clearRace();
-    if (!isSpeed() || diffEl.value === "lesson") return;
+    if (!isSpeed() || diffEl.value === "lesson" || diffEl.value === "campaign") return;
     var gate = $("race-gate");
     if (!gate) return;
     raceLocked = true;
@@ -102,7 +113,7 @@
     show(gate);
     function tick() {
       if (label) label.textContent = n > 0 ? String(n) : "开始";
-      if (msg) msg.textContent = n > 0 ? "准备" : "现在可以翻开了";
+      if (msg) msg.textContent = n > 0 ? "准备" : "可以开始";
       if (n <= 0) {
         raceTimer = setTimeout(clearRace, 420);
         return;
@@ -132,10 +143,10 @@
       });
       diffEl.appendChild(og);
     });
-    ["daily", "custom", "lesson"].forEach(function (id) {
+    ["daily", "custom", "lesson", "campaign"].forEach(function (id) {
       var o = document.createElement("option");
       o.value = id;
-      o.textContent = { daily: "每日挑战", custom: "自定义", lesson: "闯关模式" }[id];
+      o.textContent = { daily: "每日挑战", custom: "自定义", lesson: "教学关卡", campaign: "闯关模式" }[id];
       diffEl.appendChild(o);
     });
     diffEl.value = settings.diff || "easy";
@@ -168,7 +179,7 @@
       if (mines < lo && Number($("cm").value) >= lo) mines = lo;
       return {
         kind: "custom", id: "custom", label: "自定义",
-        cols: cols, rows: rows, mines: mines, cell: area > 400 ? 22 : 28,
+        cols: cols, rows: rows, mines: mines, cell: NG.cellFor(rows, cols),
       };
     }
     if (id === "lesson") {
@@ -177,6 +188,15 @@
         kind: "lesson", id: "lesson", label: ls.title,
         rows: ls.rows, cols: ls.cols, mines: ls.mines.length,
         cell: ls.cell || 40, lesson: ls,
+      };
+    }
+    if (id === "campaign") {
+      var ci = NG.clamp(settings.campaignIndex | 0, 0, NG.CAMPAIGN.length - 1);
+      var st = NG.CAMPAIGN[ci];
+      return {
+        kind: "campaign", id: "campaign", label: st.chapter + " " + st.title,
+        rows: st.rows, cols: st.cols, mines: st.mines.length,
+        cell: st.cell || 28, stage: st,
       };
     }
     var base = NG.DIFFS.medium;
@@ -196,6 +216,8 @@
     var spec = currentSpec();
     rows = spec.rows; cols = spec.cols; mineTotal = spec.mines;
     if (spec.cell) cellSize = spec.cell;
+    else cellSize = NG.cellFor(rows, cols);
+    document.documentElement.style.setProperty("--cell-size", cellSize + "px");
     neigh = NG.buildNeighbors(rows, cols);
     numbers = null; mines = null;
     open = new Uint8Array(rows * cols);
@@ -207,6 +229,7 @@
     pending = -1; cursor = ((rows / 2) | 0) * cols + ((cols / 2) | 0);
     fixedStart = false; startR = -1; startC = -1;
     lessonText = "";
+    setLessonRead(null);
     replay.on = false;
     hide(overlay); hide(pauseLayer);
     clearFx();
@@ -214,14 +237,15 @@
     paintHud();
     renderGrid();
     if (spec.kind === "lesson") setupLesson(spec.lesson);
+    else if (spec.kind === "campaign") setupCampaign(spec.stage);
     else if (spec.kind === "daily") setupSeeded(dailyKey(), spec);
     else if (location.hash.indexOf("s=") >= 0 && !resetBoard.ignoreHash) setupFromHash();
     else if (isSpeed()) {
       var best = stats.best[spec.id + ":speed"];
-      say("竞速：没有提示，不能暂停。" + (best ? " 你的最佳 " + formatTime(best.ms) + "。" : ""));
-    } else say("左键翻开，右键插旗。点任意格开始。");
+      say("竞速模式无提示，且不可暂停。" + (best ? "个人最佳 " + formatTime(best.ms) + "。" : ""));
+    } else say("左键翻开，右键标旗。数字周围旗数已满足时，双击或中键该格，可翻开其余邻格。点击任意格开始。");
     syncModeChrome();
-    if (isSpeed() && spec.kind !== "lesson" && !$("play").classList.contains("hidden")) armRace();
+    if (isSpeed() && spec.kind !== "lesson" && spec.kind !== "campaign" && !$("play").classList.contains("hidden")) armRace();
   }
 
   function dailyKey() {
@@ -257,7 +281,7 @@
     fixedStart = true;
     numbers = null;
     mines = null;
-    say("正在生成今日局面…");
+    say("正在生成当日局面…");
     cellBtn(startR, startC).classList.add("start");
     generating = true;
     $("face-btn").textContent = "…";
@@ -271,13 +295,13 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!res.ok) {
-        say(res.reason || "生成失败，请换难度或稍后再试。");
+        say(res.reason || "生成失败，请更换难度或稍后重试。");
         return;
       }
       numbers = res.numbers;
       mines = res.mines;
       bbbv = res.bbbv;
-      say("请从发光格子开始 · 开口 " + res.opening);
+      say("请从高亮格开始。初始展开 " + res.opening + " 格。");
       paintAll();
       paintHud();
     }, 20);
@@ -295,7 +319,7 @@
     seed = NG.hashSeed(ls.id);
     var start = NG.idx(startR, startC, cols);
     if (!NG.proveSolvable(rows, cols, numbers, start, ls.forceOpen || null)) {
-      say("这一关布局有问题。");
+      say("本关局面无法求解。");
       return;
     }
     bbbv = NG.compute3BV(rows, cols, numbers);
@@ -311,6 +335,28 @@
       flood(start);
     }
     say(lessonText);
+    setLessonRead(ls);
+    paintAll();
+    paintHud();
+  }
+
+  function setupCampaign(stage) {
+    var idx = NG.clamp(settings.campaignIndex | 0, 0, NG.CAMPAIGN.length - 1);
+    var built = minesToBoard(stage.rows, stage.cols, stage.mines);
+    numbers = built.numbers;
+    mines = built.mines;
+    neigh = built.neigh;
+    startR = stage.startR;
+    startC = stage.startC;
+    fixedStart = true;
+    seed = NG.hashSeed(stage.id);
+    var start = NG.idx(startR, startC, cols);
+    if (numbers[start] !== 0 || !NG.proveSolvable(rows, cols, numbers, start)) {
+      say("本关局面无法求解。");
+      return;
+    }
+    bbbv = NG.compute3BV(rows, cols, numbers);
+    say("第 " + (idx + 1) + " 关 · " + stage.chapter + " " + stage.title + "。" + stage.text + "请从高亮格开始。");
     paintAll();
     paintHud();
   }
@@ -392,6 +438,24 @@
   }
 
   function say(text) { statusEl.textContent = text; }
+
+  function setLessonRead(ls) {
+    var box = $("lesson-read");
+    var body = $("lesson-read-body");
+    var btn = $("lesson-read-btn");
+    if (!box || !body) return;
+    if (!ls) {
+      box.classList.add("hidden");
+      body.classList.add("hidden");
+      body.textContent = "";
+      if (btn) btn.textContent = "展开解析";
+      return;
+    }
+    body.textContent = ls.detail || ls.text;
+    body.classList.add("hidden");
+    if (btn) btn.textContent = "展开解析";
+    box.classList.remove("hidden");
+  }
   function hide(el) { el.classList.add("hidden"); }
   function show(el) {
     el.classList.remove("hidden");
@@ -506,7 +570,7 @@
 
   function beginAt(r, c) {
     if (fixedStart && (r !== startR || c !== startC)) {
-      say("请从发光的格子开始。");
+      say("请从高亮格开始。");
       return;
     }
     if (numbers) {
@@ -549,7 +613,7 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!best) {
-        say("这个雷密度生成不了，请减少雷数或换一个起点。");
+        say("当前雷密度无法生成无猜局面，请减少雷数或更换起点。");
         return;
       }
       if (!fixedStart) seed = bestSeed;
@@ -561,7 +625,7 @@
       startTick();
       flood(NG.idx(r, c, cols));
       writeHash();
-      say("已开局 · 开口 " + best.opening);
+      say("已开局。初始展开 " + best.opening + " 格。");
       afterMove();
     }, 20);
   }
@@ -610,7 +674,7 @@
     if (open[i]) return;
     if (settings.confirm && !isSpeed() && pending !== i) {
       pending = i;
-      say("再点一次确认翻开。");
+      say("请再次点击以确认翻开。");
       return;
     }
     pending = -1;
@@ -621,7 +685,7 @@
     if (mines[i]) {
       if (!isSpeed() && (settings.mode === "zen" || settings.mineClick === "block")) {
         btnAt(i).classList.add("shake");
-        say("这一格是雷。禅模式不会因此结束。");
+        say("该格为雷。禅模式不因此结束对局。");
         undoStack.pop();
         return;
       }
@@ -724,17 +788,17 @@
   function winSummary(ms) {
     var parts = ["用时 " + formatTime(ms)];
     if (isSpeed()) {
-      parts.push("点了 " + clickCount + " 次");
+      parts.push("点击 " + clickCount + " 次");
       var prev = stats.best[diffEl.value + ":speed"];
       if (prev) {
-        if (ms < prev.ms) parts.push("刷新了你的最佳");
-        else if (ms > prev.ms) parts.push("比最佳慢 " + formatTime(ms - prev.ms));
-        else parts.push("追平最佳");
-      } else parts.push("这是你的第一次成绩");
+        if (ms < prev.ms) parts.push("已更新个人最佳");
+        else if (ms > prev.ms) parts.push("慢于个人最佳 " + formatTime(ms - prev.ms));
+        else parts.push("与个人最佳相同");
+      } else parts.push("尚无历史成绩");
     } else if (bbbv > 0 && ms > 0) {
       var pace = (ms / 1000) / bbbv;
-      if (pace < 2.5) parts.push("推得很快");
-      else if (pace < 5) parts.push("节奏不错");
+      if (pace < 2.5) parts.push("速度较快");
+      else if (pace < 5) parts.push("节奏稳定");
     }
     return parts.join(" · ");
   }
@@ -751,27 +815,39 @@
     var ms = Math.round(nowElapsed());
     var bbvs = ms > 0 ? (bbbv / (ms / 1000)).toFixed(2) : "0";
     var cps = ms > 0 ? (clickCount / (ms / 1000)).toFixed(2) : "0";
-    var inCampaign = diffEl.value === "lesson";
+    var inCampaign = diffEl.value === "campaign";
+    var inLesson = diffEl.value === "lesson";
+    var stageIdx = settings.campaignIndex | 0;
     var lessonIdx = Number(lessonEl.value) || 0;
-    var hasNext = inCampaign && lessonIdx < NG.LESSONS.length - 1;
-    say(inCampaign ? "本关通过。" : "通关。");
+    var nextStage = inCampaign && stageIdx < NG.CAMPAIGN.length - 1;
+    var nextLesson = inLesson && lessonIdx < NG.LESSONS.length - 1;
+    say(inCampaign || inLesson ? "本关通过。" : "通关。");
+    delete overlay.dataset.nextLesson;
+    delete overlay.dataset.nextCampaign;
     if (inCampaign) {
-      $("overlay-title").textContent = "第 " + (lessonIdx + 1) + " 关通过";
-      var nextHint = hasNext
-        ? "下一关：" + NG.LESSONS[lessonIdx + 1].title
-        : "闯关全部完成，可以去挑战更大的盘面。";
-      $("overlay-msg").textContent = winSummary(ms) + "。" + nextHint;
-      $("again-btn").textContent = hasNext ? "下一关" : "再玩本关";
-      if (hasNext) overlay.dataset.nextLesson = String(lessonIdx + 1);
-      else delete overlay.dataset.nextLesson;
+      var stage = NG.CAMPAIGN[stageIdx];
+      $("overlay-title").textContent = "第 " + (stageIdx + 1) + " 关通过";
+      var nextHint = nextStage
+        ? "下一关：" + NG.CAMPAIGN[stageIdx + 1].chapter + " " + NG.CAMPAIGN[stageIdx + 1].title
+        : "全部关卡已通过。";
+      $("overlay-msg").textContent = winSummary(ms) + "。" + (stage ? stage.text + " " : "") + nextHint;
+      $("again-btn").textContent = nextStage ? "下一关" : "再玩本关";
+      if (nextStage) overlay.dataset.nextCampaign = String(stageIdx + 1);
       delete overlay.dataset.nextDiff;
-      settings.campaignBest = Math.max(settings.campaignBest | 0, lessonIdx + 1);
+      settings.campaignBest = Math.max(settings.campaignBest | 0, stageIdx + 1);
       NG.saveSettings(settings);
+    } else if (inLesson) {
+      $("overlay-title").textContent = "本关完成";
+      $("overlay-msg").textContent = nextLesson
+        ? "下一关：" + NG.LESSONS[lessonIdx + 1].title
+        : "教学关卡已全部完成。";
+      $("again-btn").textContent = nextLesson ? "下一关" : "再练本关";
+      if (nextLesson) overlay.dataset.nextLesson = String(lessonIdx + 1);
+      delete overlay.dataset.nextDiff;
     } else {
       $("overlay-title").textContent = "胜利";
       $("overlay-msg").textContent = winSummary(ms) + "。";
       $("again-btn").textContent = "再来一局";
-      delete overlay.dataset.nextLesson;
     }
     overlay.classList.remove("lose-fx");
     if (motionOn()) {
@@ -786,13 +862,13 @@
     record(true, ms, bbvs, cps);
     maybeSubmitDaily(ms);
     maybeAutoBackup();
-    if (!inCampaign && settings.mode !== "zen" && !isSpeed()) {
+    if (!inCampaign && !inLesson && settings.mode !== "zen" && !isSpeed()) {
       stats.streak = (stats.streak || 0) + 1;
       stats.lossStreak = 0;
       NG.saveStats(stats);
       var next = NG.nextDiff(diffEl.value, 1);
       if (stats.streak >= 3 && next) {
-        say("连胜 " + stats.streak + " 局，下一局升到「" + NG.DIFFS[next].label + "」。");
+        say("已连胜 " + stats.streak + " 局，下一局将升至「" + NG.DIFFS[next].label + "」。");
         overlay.dataset.nextDiff = next;
       } else {
         delete overlay.dataset.nextDiff;
@@ -826,9 +902,9 @@
       });
     }
     $("face-btn").textContent = "✧";
-    say("踩雷了。");
-    $("overlay-title").textContent = "再试一次";
-    $("overlay-msg").textContent = isSpeed() ? "这局结束了。再来会重新倒计时。" : "可以重新开局。";
+    say("已踩中地雷。");
+    $("overlay-title").textContent = "本局失败";
+    $("overlay-msg").textContent = isSpeed() ? "本局结束。再次开始将重新倒计时。" : "可重新开始。";
     $("again-btn").textContent = "再来一局";
     delete overlay.dataset.nextLesson;
     overlay.classList.add("lose-fx");
@@ -839,7 +915,7 @@
     if (!isSpeed()) {
       var easier = NG.nextDiff(diffEl.value, -1);
       if (stats.lossStreak >= 3 && easier) {
-        say("连续未过，下一局降到「" + NG.DIFFS[easier].label + "」。");
+        say("连续未完成，下一局将降至「" + NG.DIFFS[easier].label + "」。");
         overlay.dataset.nextDiff = easier;
       } else {
         delete overlay.dataset.nextDiff;
@@ -903,7 +979,7 @@
     if (won) {
       var prev = stats.best[key];
       if (!prev || ms < prev.ms) stats.best[key] = { ms: ms, bbbv: bbbv, bbvs: Number(bbvs), at: Date.now() };
-      if (entry.diff === "daily" || (typeof seed === "number" && fixedStart)) {
+      if (entry.diff === "daily") {
         var day = dailyKey();
         if (!stats.daily) stats.daily = {};
         var dprev = stats.daily[day];
@@ -952,13 +1028,13 @@
   }
 
   function hint() {
-    if (!assistOn()) { say("竞速模式不能用提示。"); return; }
+    if (!assistOn()) { say("竞速模式不提供提示。"); return; }
     var info = analyze();
-    if (!info) { say("先翻开第一格。"); return; }
-    if (info.contradiction) { say("旗和数字矛盾，可能插错了。"); return; }
+    if (!info) { say("请先翻开起始格。"); return; }
+    if (info.contradiction) { say("旗标与数字矛盾，可能存在误标。"); return; }
     var chain = buildChain(info, 3);
     if (!chain.length) {
-      say(info.guess.length ? "还有 " + info.guess.length + " 格暂时推不出来。" : "没有未知格了。");
+      say(info.guess.length ? "尚有 " + info.guess.length + " 格无法唯一确定。" : "已无未知格。");
       return;
     }
     chain.forEach(function (pick) {
@@ -967,7 +1043,7 @@
     var first = chain[0];
     var head = "第 " + (((first.i / cols) | 0) + 1) + " 行第 " + ((first.i % cols) + 1) + " 列" + (first.mine ? "是雷。" : "安全。") + first.why;
     if (chain.length > 1) {
-      head += " 还可再推 " + (chain.length - 1) + " 步。";
+      head += "还可继续确定 " + (chain.length - 1) + " 步。";
     }
     say(head);
   }
@@ -1149,11 +1225,11 @@
   function doAnalyze() {
     if (isSpeed()) { say("竞速模式不提供分析。"); return; }
     var info = analyze();
-    if (!info) { say("先翻开第一格。"); return; }
+    if (!info) { say("请先翻开起始格。"); return; }
     if (!info.safe.length && !info.mines.length && openCount + mineTotal < rows * cols) {
-      say("还不能唯一确定的格子：" + info.guess.length + "。");
+      say("尚不能唯一确定的格子：" + info.guess.length + "。");
     } else {
-      say("可开 " + info.safe.length + " · 可标雷 " + info.mines.length + " · 未定 " + info.guess.length + "。");
+      say("可翻开 " + info.safe.length + " · 可标旗 " + info.mines.length + " · 未定 " + info.guess.length + "。");
     }
   }
 
@@ -1196,7 +1272,7 @@
   function settingsHtml() {
     var cloud = settings.cloud || NG.defaultCloudSettings();
     return '<div class="settings-grid">' +
-      row("主题", '<select id="set-theme"><option value="soft">静蓝护眼</option><option value="classic">经典</option><option value="dark">深空</option><option value="pixel">像素</option></select>') +
+      row("主题", '<select id="set-theme"><option value="soft">静蓝</option><option value="classic">经典</option><option value="dark">深色</option><option value="pixel">像素</option></select>') +
       row("配色", '<select id="set-palette"><option value="classic">经典数字色</option><option value="cb">色盲友好</option></select>') +
       row("音效", check("set-sound", settings.sound)) +
       row("动画", check("set-motion", settings.motion !== false)) +
@@ -1205,10 +1281,10 @@
       row("无旗模式", check("set-noflag", settings.noFlag)) +
       row("大字号", check("set-large", settings.largeText)) +
       row("辅助", '<select id="set-assist"><option value="off">关闭</option><option value="hint">仅提示按钮</option><option value="safe">标出安全格</option><option value="prob">雷概率</option></select>') +
-      row("踩雷", '<select id="set-mine"><option value="lose">直接结束</option><option value="block">拦住，不结束</option></select>') +
+      row("踩雷", '<select id="set-mine"><option value="lose">结束对局</option><option value="block">阻止翻开，不结束</option></select>') +
       row("格子", '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
       '<hr class="soft-hr" />' +
-      '<p class="hint">可选：填端点后可云备份、上每日榜。不填也能玩。</p>' +
+      '<p class="hint">可选。填写端点后可进行云备份与每日榜。不填写亦可正常游戏。</p>' +
       row("同步端点", '<input id="set-api" type="url" placeholder="https://api.example.com" value="' + escAttr(cloud.apiBase) + '">') +
       row("同步密钥", '<input id="set-key" type="password" autocomplete="off" placeholder="至少 8 位" value="' + escAttr(cloud.syncKey) + '">') +
       row("榜上昵称", '<input id="set-name" type="text" maxlength="24" value="' + escAttr(cloud.displayName) + '">') +
@@ -1348,26 +1424,27 @@
     });
     var diffRows = Object.keys(byDiff).map(function (k) {
       var d = byDiff[k];
-      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || ({ lesson: "闯关", daily: "每日", custom: "自定义" }[k] || k);
+      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || ({ lesson: "教学", campaign: "闯关", daily: "每日", custom: "自定义" }[k] || k);
       var wr = d.n ? Math.round(d.w / d.n * 100) : 0;
       var am = d.w ? formatTime(Math.round(d.ms / d.w)) : "-";
       return "<li>" + label + " 胜率 " + wr + "% · 平均 " + am + "</li>";
-    }).join("") || "<li>还没有对局</li>";
+    }).join("") || "<li>尚无对局记录</li>";
     var bestRows = Object.keys(stats.best).map(function (k) {
       var b = stats.best[k];
       var label = (NG.DIFFS[k.split(":")[0]] && NG.DIFFS[k.split(":")[0]].label) || k;
-      if (k.indexOf("lesson") === 0) label = "闯关";
+      if (k.indexOf("campaign") === 0) label = "闯关";
+      else if (k.indexOf("lesson") === 0) label = "教学";
       return "<li>" + label + " 最佳 " + formatTime(b.ms) + "</li>";
-    }).join("") || "<li>还没有最佳成绩</li>";
+    }).join("") || "<li>尚无最佳成绩</li>";
     var day = dailyKey();
     var dayShort = day.split("-").slice(0, 3).join("-");
     var dailyBest = stats.daily && stats.daily[day];
     var dailyLine = dailyBest
       ? "<p>今日本地最佳 " + formatTime(dailyBest.ms) + "</p>"
-      : "<p>今日挑战还没有本地成绩。</p>";
+      : "<p>今日挑战尚无本地成绩。</p>";
     var campaignLine = (settings.campaignBest | 0) > 0
-      ? "<p>闯关进度：已通过 " + (settings.campaignBest | 0) + " / " + NG.LESSONS.length + " 关</p>"
-      : "<p>闯关进度：尚未通关</p>";
+      ? "<p>闯关进度：已通过 " + (settings.campaignBest | 0) + " / " + NG.CAMPAIGN.length + " 关</p>"
+      : "<p>闯关进度：尚未通过</p>";
     var recent = stats.games.slice(-16);
     var max = 1;
     recent.forEach(function (g) { if (g.won && g.ms > max) max = g.ms; });
@@ -1382,7 +1459,7 @@
       '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">刷新今日榜</button></div>' +
       '<ol id="daily-board" class="daily-board"><li class="hint">打开云端后可看公开榜。</li></ol>' +
       '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div>' +
-      '<p class="hint">柱高是最近用时，浅色为失败。</p></div>';
+      '<p class="hint">柱高表示最近用时，浅色表示失败。</p></div>';
   }
 
   function bindStats() {
@@ -1394,7 +1471,7 @@
       if (!el) return;
       if (note) { el.innerHTML = "<li class=\"hint\">" + note + "</li>"; return; }
       if (!entries || !entries.length) {
-        el.innerHTML = "<li class=\"hint\">今日榜还是空的。</li>";
+        el.innerHTML = "<li class=\"hint\">今日榜暂无记录。</li>";
         return;
       }
       el.innerHTML = entries.map(function (e, i) {
@@ -1407,13 +1484,13 @@
       if (!NG.cloudAvailable(settings)) {
         var local = stats.daily && stats.daily[dailyKey()];
         if (local) renderBoard([{ name: "我", ms: local.ms, mode: local.mode }]);
-        else renderBoard(null, "未开云端，只显示本地成绩。");
+        else renderBoard(null, "未启用云端，仅显示本地成绩。");
         return;
       }
       NG.fetchDailyBoard(settings, dayShort, "daily").then(function (data) {
         renderBoard(data.entries || []);
       }).catch(function () {
-        renderBoard(null, "榜暂时不可用。");
+        renderBoard(null, "排行榜暂不可用。");
       });
     }
     btn.onclick = load;
@@ -1704,7 +1781,13 @@
   });
 
   function newGame() {
-    if (overlay.dataset.nextLesson != null) {
+    if (overlay.dataset.nextCampaign != null) {
+      settings.campaignIndex = Number(overlay.dataset.nextCampaign) || 0;
+      settings.diff = "campaign";
+      diffEl.value = "campaign";
+      NG.saveSettings(settings);
+      delete overlay.dataset.nextCampaign;
+    } else if (overlay.dataset.nextLesson != null) {
       lessonEl.value = overlay.dataset.nextLesson;
       settings.lessonIndex = Number(lessonEl.value) || 0;
       NG.saveSettings(settings);
@@ -1739,13 +1822,19 @@
   $("undo-btn").onclick = undo;
   $("redo-btn").onclick = redo;
   $("analyze-btn").onclick = doAnalyze;
-  $("flag-mode").onclick = function () {
-    flagMode = !flagMode;
-    this.textContent = flagMode ? "插旗" : "翻开";
-    this.classList.toggle("active", flagMode);
-  };
   timerEl.onclick = togglePause;
   $("resume-btn").onclick = togglePause;
+  $("lesson-read-btn").onclick = function () {
+    var body = $("lesson-read-body");
+    if (!body) return;
+    body.classList.toggle("hidden");
+    this.textContent = body.classList.contains("hidden") ? "展开解析" : "收起解析";
+  };
+  $("flag-mode").onclick = function () {
+    flagMode = !flagMode;
+    this.textContent = flagMode ? "标旗" : "翻开";
+    this.classList.toggle("active", flagMode);
+  };
   $("apply-custom").onclick = function () {
     diffEl.value = "custom";
     settings.diff = "custom";
@@ -1755,13 +1844,14 @@
     $("cm").value = String(spec.mines);
     var minSafe = 1 + 8;
     if (spec.mines > spec.rows * spec.cols - minSafe) {
-      say("雷太多了，请少留几颗。");
+      say("雷数过多，请减少。");
       return;
     }
     if (spec.rows * spec.cols > 1200) {
       say("已调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
     }
     NG.saveSettings(settings);
+    screenFrom = "boards";
     enterPlay();
   };
   $("open-settings").onclick = function () { openModal("设置", settingsHtml()); bindSettings(); };
@@ -1776,12 +1866,12 @@
   };
   $("open-replay").onclick = function () {
     if (!lastRecord || !lastRecord.actions || !lastRecord.actions.length) {
-      openModal("复盘", "<p>先完成或结束一局，才能复盘。</p>");
+      openModal("复盘", "<p>需先完成或结束一局，方可复盘。</p>");
       return;
     }
     hide(modal);
     prepareReplay();
-    say("可以播放、暂停，或调整倍速。1 倍大约每步一秒。");
+    say("可播放、暂停或调整倍速。1 倍速下每步约一秒。");
   };
   $("rp-toggle").onclick = toggleReplayPlay;
   $("rp-step").onclick = function () {
@@ -1836,57 +1926,133 @@
   function showHome() {
     stopPlaySurface();
     showOnly("home");
-    setHero("先选一种玩法");
+    setHero("请选择模式");
+  }
+
+  function boardPageSpec() {
+    var pages = {
+      practice: {
+        note: "建议先完成雷数较少的盘面，再进行经典雷数。",
+        groups: [
+          { title: "较低密度", ids: ["ngEasy", "ngMedium", "ngHard"] },
+          { title: "经典雷数", ids: ["easy", "medium", "hard"] },
+        ],
+        daily: true,
+        custom: true,
+      },
+      speed: {
+        note: "仅记录经典三档与每日挑战，便于比较用时。",
+        groups: [
+          { title: "标准计时", ids: ["easy", "medium", "hard"] },
+        ],
+        daily: true,
+        custom: false,
+      },
+      zen: {
+        note: "不计时，踩雷不结束对局。每日挑战位于竞速模式。",
+        groups: [
+          { title: "经典规格", ids: ["easy", "medium", "hard"] },
+          { title: "较低密度", ids: ["ngEasy", "ngMedium", "ngHard"] },
+        ],
+        daily: false,
+        custom: true,
+      },
+    };
+    return pages[settings.mode] || pages.practice;
+  }
+
+  function addBoardCard(box, title, sub, onClick) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "pick-card";
+    b.innerHTML = "<strong>" + title + "</strong><span>" + sub + "</span>";
+    b.onclick = onClick;
+    box.appendChild(b);
+  }
+
+  function paintBoards() {
+    var spec = boardPageSpec();
+    var box = $("board-cards");
+    box.innerHTML = "";
+    spec.groups.forEach(function (group) {
+      var h = document.createElement("p");
+      h.className = "home-kicker chapter-break";
+      h.textContent = group.title;
+      box.appendChild(h);
+      group.ids.forEach(function (id) {
+        var d = NG.DIFFS[id];
+        if (!d) return;
+        addBoardCard(box, d.label, d.cols + "×" + d.rows + " · " + d.mines + " 雷", function () {
+          chooseDiff(id);
+        });
+      });
+    });
+    if (spec.daily || spec.custom) {
+      var extra = document.createElement("p");
+      extra.className = "home-kicker chapter-break";
+      extra.textContent = spec.daily && spec.custom ? "其他" : (spec.daily ? "每日" : "自定义");
+      box.appendChild(extra);
+    }
+    if (spec.daily) {
+      addBoardCard(box, "每日挑战", "当日为同一中级盘面", function () { chooseDiff("daily"); });
+    }
+    if (spec.custom) {
+      addBoardCard(box, "自定义", "自行设定宽度、高度与雷数", function () {
+        var form = $("custom");
+        form.classList.remove("hidden");
+        form.scrollIntoView({ block: "nearest" });
+      });
+    }
+    var form = $("custom");
+    if (form) form.classList.add("hidden");
   }
 
   function showBoards() {
     var names = { practice: "练习模式", speed: "竞速模式", zen: "禅模式" };
-    var notes = {
-      practice: "可以提示、撤销。选一盘开始。",
-      speed: "倒计时后开跑，没有提示，也不能暂停。",
-      zen: "不计时，踩到雷也不会结束。",
-    };
-    $("boards-title").textContent = (names[settings.mode] || "选一盘") + " · 选盘面";
-    $("boards-note").textContent = notes[settings.mode] || "";
+    var spec = boardPageSpec();
+    $("boards-title").textContent = (names[settings.mode] || "选择盘面") + " · 选择盘面";
+    $("boards-note").textContent = spec.note;
+    paintBoards();
     showOnly("page-boards");
-    setHero(names[settings.mode] || "选一盘");
+    setHero(names[settings.mode] || "选择盘面");
   }
 
   function nextCampaignIndex() {
     var n = settings.campaignBest | 0;
     if (n < 0) n = 0;
-    if (n >= NG.LESSONS.length) return NG.LESSONS.length - 1;
+    if (n >= NG.CAMPAIGN.length) return NG.CAMPAIGN.length - 1;
     return n;
   }
 
   function paintCampaign() {
     var cleared = settings.campaignBest | 0;
-    var total = NG.LESSONS.length;
+    var total = NG.CAMPAIGN.length;
     var next = nextCampaignIndex();
     var doneAll = cleared >= total;
     $("campaign-progress").textContent = doneAll
-      ? total + " 关都过了，可以重打任意一关。"
+      ? total + " 关均已通过，可重玩任意一关。"
       : "已通过 " + cleared + " / " + total + " 关";
     $("campaign-continue").textContent = doneAll
-      ? "再打第 " + (next + 1) + " 关"
+      ? "重玩第 " + (next + 1) + " 关"
       : (cleared ? "继续第 " + (next + 1) + " 关" : "从第 1 关开始");
     var box = $("campaign-cards");
     box.innerHTML = "";
     var last = "";
-    NG.LESSONS.forEach(function (ls, i) {
-      if (ls.chapter !== last) {
-        last = ls.chapter;
+    NG.CAMPAIGN.forEach(function (st, i) {
+      if (st.chapter !== last) {
+        last = st.chapter;
         var h = document.createElement("p");
         h.className = "home-kicker chapter-break";
-        h.textContent = ls.chapter;
+        h.textContent = st.chapter;
         box.appendChild(h);
       }
       var card = document.createElement("button");
       card.type = "button";
       card.className = "pick-card" + (i < cleared ? " done" : "") + (i === next && !doneAll ? " current" : "");
-      var mark = i < cleared ? "已过" : (i === next ? "当前" : "未开");
-      card.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + mark + " · " + (ls.chapter || "") + "</span>";
-      card.onclick = function () { chooseLesson(i, "campaign"); };
+      var mark = i < cleared ? "已通过" : (i === next ? "当前" : "未通过");
+      card.innerHTML = "<strong>" + (i + 1) + ". " + st.title + "</strong><span>" +
+        mark + " · " + st.mines.length + " 雷</span>";
+      card.onclick = function () { chooseCampaign(i); };
       box.appendChild(card);
     });
   }
@@ -1912,11 +2078,27 @@
         h.textContent = ls.chapter;
         box.appendChild(h);
       }
-      var card = document.createElement("button");
-      card.type = "button";
-      card.className = "pick-card";
-      card.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + ls.text + "</span>";
-      card.onclick = function () { chooseLesson(i, "teach"); };
+      var card = document.createElement("div");
+      card.className = "pick-card teach-item";
+      var openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "teach-open";
+      openBtn.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + ls.text + "</span>";
+      openBtn.onclick = function () { chooseLesson(i, "teach"); };
+      var more = document.createElement("button");
+      more.type = "button";
+      more.className = "text-btn";
+      more.textContent = "解析";
+      var detail = document.createElement("p");
+      detail.className = "teach-detail hidden";
+      detail.textContent = ls.detail || ls.text;
+      more.onclick = function () {
+        detail.classList.toggle("hidden");
+        more.textContent = detail.classList.contains("hidden") ? "解析" : "收起";
+      };
+      card.appendChild(openBtn);
+      card.appendChild(more);
+      card.appendChild(detail);
       box.appendChild(card);
     });
   }
@@ -1963,18 +2145,17 @@
     enterPlay();
   }
 
+  function chooseCampaign(i) {
+    settings.diff = "campaign";
+    settings.mode = "practice";
+    settings.campaignIndex = i;
+    diffEl.value = "campaign";
+    NG.saveSettings(settings);
+    screenFrom = "campaign";
+    enterPlay();
+  }
+
   function fillHome() {
-    var boards = $("board-cards");
-    boards.innerHTML = "";
-    Object.keys(NG.DIFFS).forEach(function (id) {
-      var d = NG.DIFFS[id];
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = "pick-card";
-      b.innerHTML = "<strong>" + d.label + "</strong><span>" + d.group + " · " + d.cols + "×" + d.rows + " · " + d.mines + " 雷</span>";
-      b.onclick = function () { chooseDiff(id); };
-      boards.appendChild(b);
-    });
     paintTeach();
     document.querySelectorAll("#home .pick-card").forEach(function (b) {
       b.onclick = function () {
@@ -1991,8 +2172,7 @@
     $("boards-back").onclick = showHome;
     $("campaign-back").onclick = showHome;
     $("teach-back").onclick = showHome;
-    $("daily-card").onclick = function () { chooseDiff("daily"); };
-    $("campaign-continue").onclick = function () { chooseLesson(nextCampaignIndex(), "campaign"); };
+    $("campaign-continue").onclick = function () { chooseCampaign(nextCampaignIndex()); };
   }
 
   if (/[#&?]mockCloud=1/.test(location.href)) NG.installMockCloud();
@@ -2010,34 +2190,5 @@
     showHome();
   }
   if (NG._mockCloud) say("已开启本地云端模拟。");
-  bootstrapOnline();
-
-  function bootstrapOnline() {
-    NG.loadCloudConfig().then(function () {
-      return NG.checkVersion(settings);
-    }).then(function (info) {
-      if (!info || !info.newer || !info.remote) return;
-      showVersionBanner(info.remote);
-    });
-  }
-
-  function showVersionBanner(remote) {
-    var bar = document.createElement("div");
-    bar.className = "version-banner";
-    bar.setAttribute("role", "status");
-    bar.innerHTML = "<span>有新版本 " + (remote.version || "") + "：" + (remote.notes || "可更新") +
-      "</span><span class=\"tools\">" +
-      "<button type=\"button\" class=\"text-btn\" id=\"ver-dismiss\">稍后</button>" +
-      "<button type=\"button\" class=\"text-btn\" id=\"ver-skip\">跳过此版</button>" +
-      "<button type=\"button\" class=\"text-btn\" id=\"ver-reload\">刷新</button></span>";
-    document.body.appendChild(bar);
-    $("ver-dismiss").onclick = function () { bar.remove(); };
-    $("ver-skip").onclick = function () {
-      settings.cloud = settings.cloud || NG.defaultCloudSettings();
-      settings.cloud.skipVersion = String(remote.version || "");
-      NG.saveSettings(settings);
-      bar.remove();
-    };
-    $("ver-reload").onclick = function () { location.reload(); };
-  }
+  NG.loadCloudConfig();
 })();

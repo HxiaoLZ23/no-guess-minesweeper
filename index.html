@@ -10,38 +10,38 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <div class="bg-wash" aria-hidden="true"></div>
   <main class="app">
     <header class="hero">
       <p class="brand">无猜扫雷</p>
-      <h1 class="tagline">不用猜，每一步都能推出来</h1>
-      <p class="sub" id="hero-sub">先选一种玩法</p>
+      <h1 class="tagline">每一步均可依逻辑确定</h1>
+      <p class="sub" id="hero-sub">请选择模式</p>
     </header>
 
     <section class="home" id="home" aria-label="首页">
       <div class="card-grid home-modes">
         <button type="button" class="pick-card" data-go="boards" data-mode="practice">
           <strong>练习模式</strong>
-          <span>可以提示、撤销，慢慢推</span>
+          <span>可使用提示与撤销</span>
         </button>
         <button type="button" class="pick-card" data-go="boards" data-mode="speed">
           <strong>竞速模式</strong>
-          <span>倒计时开跑。没有提示，也不能暂停</span>
+          <span>倒计时后开始。无提示，不可暂停</span>
         </button>
         <button type="button" class="pick-card" data-go="boards" data-mode="zen">
           <strong>禅模式</strong>
-          <span>不计时。踩到雷也不会结束</span>
+          <span>不计时。踩雷不结束对局</span>
         </button>
         <button type="button" class="pick-card" data-go="campaign">
           <strong>闯关模式</strong>
-          <span>按顺序过关，记下进度</span>
+          <span>自 8×8 起，宽度与高度交替增加</span>
         </button>
         <button type="button" class="pick-card" data-go="teach">
           <strong>教学关卡</strong>
-          <span>按章节看定式，想学哪关点哪关</span>
+          <span>按章节学习定式，可任选关卡</span>
         </button>
       </div>
     </section>
@@ -53,13 +53,7 @@
       </div>
       <p class="hint" id="boards-note"></p>
       <div class="card-grid" id="board-cards"></div>
-      <div class="card-grid">
-        <button type="button" class="pick-card" id="daily-card">
-          <strong>每日挑战</strong>
-          <span>今天大家同一盘</span>
-        </button>
-      </div>
-      <div class="custom" id="custom">
+      <div class="custom hidden" id="custom">
         <label>宽 <input id="cw" type="number" min="5" max="50" value="9" /></label>
         <label>高 <input id="ch" type="number" min="5" max="40" value="9" /></label>
         <label>雷 <input id="cm" type="number" min="1" max="400" value="10" /></label>
@@ -72,6 +66,7 @@
         <button type="button" class="text-btn" id="campaign-back">返回</button>
         <p class="home-kicker">闯关</p>
       </div>
+      <p class="hint">关卡自 8×8 起，依 8×8、8×9、9×9、9×10 的顺序增大。每关均可依逻辑完成。</p>
       <p class="hint" id="campaign-progress"></p>
       <button type="button" class="primary-btn" id="campaign-continue">从第 1 关开始</button>
       <div class="card-grid" id="campaign-cards"></div>
@@ -82,7 +77,7 @@
         <button type="button" class="text-btn" id="teach-back">返回</button>
         <p class="home-kicker">教学关卡</p>
       </div>
-      <p class="hint">点一关就只练这一手定式。</p>
+      <p class="hint">点击标题进入关卡，亦可先展开解析。</p>
       <div class="card-grid" id="teach-cards"></div>
     </section>
 
@@ -111,7 +106,11 @@
         </div>
       </div>
 
-      <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键插旗。</p>
+      <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键标旗。数字周围旗数已满足时，双击或中键该格，可翻开其余邻格。</p>
+      <div class="lesson-read hidden" id="lesson-read">
+        <button type="button" class="text-btn" id="lesson-read-btn">展开解析</button>
+        <p class="lesson-read-body hidden" id="lesson-read-body"></p>
+      </div>
 
       <div class="tools" id="assist-tools">
         <button type="button" class="text-btn" id="hint-btn">提示</button>
@@ -166,7 +165,8 @@
       <button type="button" class="text-btn" id="open-stats">统计</button>
       <button type="button" class="text-btn" id="open-share">分享</button>
       <button type="button" class="text-btn" id="open-replay">复盘</button>
-      <span class="foot-note">方向键 · 空格翻开 · F 插旗</span>
+      <span class="foot-note">方向键 · 空格翻开 · F 标旗</span>
+      <a class="text-btn foot-github" href="https://github.com/HxiaoLZ23/no-guess-minesweeper" target="_blank" rel="noopener noreferrer">GitHub</a>
     </footer>
   </main>
 
@@ -180,12 +180,13 @@
     </div>
   </div>
 
-  <script src="js/util.js?v=9"></script>
+  <script src="js/util.js?v=12"></script>
   <script src="js/solver.js?v=6"></script>
-  <script src="js/generate.js?v=12"></script>
-  <script src="js/persist.js?v=8"></script>
+  <script src="js/generate.js?v=13"></script>
+  <script src="js/persist.js?v=9"></script>
+  <script src="js/campaign.js?v=3"></script>
   <script src="js/cloud.js?v=3"></script>
   <script src="js/ambiance.js?v=1"></script>
-  <script src="js/game.js?v=21"></script>
+  <script src="js/game.js?v=24"></script>
 </body>
 </html>

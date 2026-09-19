@@ -20,7 +20,9 @@ NG.defaultSettings = function () {
     mode: "practice",
     diff: "easy",
     lessonIndex: 0,
+    campaignIndex: 0,
     campaignBest: 0,
+    campaignSet: "",
     cloud: {
       apiBase: "",
       syncKey: "",
