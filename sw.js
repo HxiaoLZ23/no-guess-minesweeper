@@ -1,4 +1,4 @@
-var CACHE = "ng-minesweeper-v6";
+var CACHE = "ng-minesweeper-v8";
 var FILES = [
   "./",
   "./index.html",

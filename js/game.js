@@ -5,7 +5,6 @@
   var stats = NG.loadStats();
   var diffEl = document.getElementById("diff");
   var lessonEl = document.getElementById("lesson");
-  var lessonField = document.getElementById("lesson-field");
   var customEl = document.getElementById("custom");
   var boardEl = document.getElementById("board");
   var boardWrap = document.getElementById("board-wrap");
@@ -30,8 +29,12 @@
   var pressTimer = null, bbbv = 0, lessonText = "";
   var pointers = new Map();
   var pan = { active: false, x: 0, y: 0, sx: 0, sy: 0 };
-  var replay = { on: false, index: 0, actions: [], timer: null };
+  var replay = { on: false, paused: false, index: 0, actions: [], timer: null, rate: 1, prepared: false };
   var lastRecord = null;
+  var raceLocked = false;
+  var raceTimer = null;
+  var screenFrom = "home";
+  var menuScreens = ["home", "page-boards", "page-campaign", "page-teach", "play"];
 
   function $(id) { return document.getElementById(id); }
 
@@ -39,10 +42,12 @@
     document.documentElement.dataset.theme = settings.theme;
     document.documentElement.dataset.palette = settings.palette;
     document.documentElement.dataset.large = settings.largeText ? "1" : "0";
+    document.documentElement.dataset.play = settings.mode || "practice";
     document.documentElement.style.setProperty("--cell-size", cellSize + "px");
-    document.querySelectorAll(".mode-btn").forEach(function (b) {
+    document.querySelectorAll(".pick-card[data-mode]").forEach(function (b) {
       b.classList.toggle("active", b.dataset.mode === settings.mode);
     });
+    syncModeChrome();
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
       meta.setAttribute("content", settings.theme === "classic" || settings.theme === "pixel" ? "#7aa8a0" : "#152a45");
@@ -50,6 +55,62 @@
     if (NG._ambiance) {
       NG._ambiance.setEnabled(settings.motion !== false && (settings.theme === "soft" || settings.theme === "dark"));
     }
+  }
+
+  function isSpeed() { return settings.mode === "speed"; }
+
+  function syncModeChrome() {
+    var speed = isSpeed();
+    var assist = $("assist-tools");
+    if (assist) assist.classList.toggle("hidden", speed);
+    var pl = $("progress-label");
+    if (pl) pl.textContent = speed ? "点击" : "进度";
+    if (timerEl) timerEl.title = speed ? "竞速不能暂停" : "暂停";
+    var label = $("play-label");
+    if (label && diffEl && diffEl.options.length) label.textContent = playTitle();
+  }
+
+  function playTitle() {
+    var modeName = { practice: "练习", speed: "竞速", zen: "禅" }[settings.mode] || "练习";
+    var id = diffEl.value;
+    var d = NG.DIFFS[id];
+    var board = d ? d.label : ({ daily: "每日挑战", custom: "自定义", lesson: "闯关" }[id] || "");
+    if (id === "lesson") {
+      var i = Number(lessonEl.value) || 0;
+      var ls = NG.LESSONS[i];
+      if (ls) board = "第 " + (i + 1) + " 关 · " + ls.title;
+    }
+    return modeName + " · " + board;
+  }
+
+  function clearRace() {
+    raceLocked = false;
+    if (raceTimer) { clearTimeout(raceTimer); raceTimer = null; }
+    var gate = $("race-gate");
+    if (gate) hide(gate);
+  }
+
+  function armRace() {
+    clearRace();
+    if (!isSpeed() || diffEl.value === "lesson") return;
+    var gate = $("race-gate");
+    if (!gate) return;
+    raceLocked = true;
+    var n = 3;
+    var label = $("race-count");
+    var msg = $("race-msg");
+    show(gate);
+    function tick() {
+      if (label) label.textContent = n > 0 ? String(n) : "开始";
+      if (msg) msg.textContent = n > 0 ? "准备" : "现在可以翻开了";
+      if (n <= 0) {
+        raceTimer = setTimeout(clearRace, 420);
+        return;
+      }
+      n -= 1;
+      raceTimer = setTimeout(tick, 720);
+    }
+    tick();
   }
 
   function fillDiffs() {
@@ -130,6 +191,8 @@
 
   function resetBoard() {
     stopTick();
+    stopReplay();
+    clearRace();
     var spec = currentSpec();
     rows = spec.rows; cols = spec.cols; mineTotal = spec.mines;
     if (spec.cell) cellSize = spec.cell;
@@ -150,12 +213,15 @@
     $("face-btn").textContent = "◎";
     paintHud();
     renderGrid();
-    lessonField.classList.toggle("hidden", spec.kind !== "lesson");
-    customEl.classList.toggle("hidden", spec.kind !== "custom");
     if (spec.kind === "lesson") setupLesson(spec.lesson);
     else if (spec.kind === "daily") setupSeeded(dailyKey(), spec);
     else if (location.hash.indexOf("s=") >= 0 && !resetBoard.ignoreHash) setupFromHash();
-    else say("左键翻开，右键插旗。点任意格开始。");
+    else if (isSpeed()) {
+      var best = stats.best[spec.id + ":speed"];
+      say("竞速：没有提示，不能暂停。" + (best ? " 你的最佳 " + formatTime(best.ms) + "。" : ""));
+    } else say("左键翻开，右键插旗。点任意格开始。");
+    syncModeChrome();
+    if (isSpeed() && spec.kind !== "lesson" && !$("play").classList.contains("hidden")) armRace();
   }
 
   function dailyKey() {
@@ -289,8 +355,11 @@
 
   function paintHud() {
     mineEl.textContent = String(Math.max(0, mineTotal - flagCount));
-    var safe = rows * cols - mineTotal;
-    progressEl.textContent = safe ? Math.min(100, Math.round(openCount / safe * 100)) + "%" : "0%";
+    if (isSpeed()) progressEl.textContent = String(clickCount);
+    else {
+      var safe = rows * cols - mineTotal;
+      progressEl.textContent = safe ? Math.min(100, Math.round(openCount / safe * 100)) + "%" : "0%";
+    }
     timerEl.textContent = settings.mode === "zen" ? "禅" : formatTime(nowElapsed());
   }
 
@@ -529,7 +598,7 @@
   }
 
   function openCell(r, c) {
-    if (ended || paused || generating || (replay.on && !replay.stepping)) return;
+    if (raceLocked || ended || paused || generating || (replay.prepared && !replay.stepping)) return;
     var i = r * cols + c;
     if (flags[i]) return;
     if (!started) {
@@ -539,7 +608,7 @@
       return;
     }
     if (open[i]) return;
-    if (settings.confirm && pending !== i) {
+    if (settings.confirm && !isSpeed() && pending !== i) {
       pending = i;
       say("再点一次确认翻开。");
       return;
@@ -550,7 +619,7 @@
     actions.push({ t: Math.round(nowElapsed()), op: "open", r: r, c: c });
     blip(520, 0.03);
     if (mines[i]) {
-      if (settings.mode === "zen" || settings.mineClick === "block") {
+      if (!isSpeed() && (settings.mode === "zen" || settings.mineClick === "block")) {
         btnAt(i).classList.add("shake");
         say("这一格是雷。禅模式不会因此结束。");
         undoStack.pop();
@@ -564,7 +633,7 @@
   }
 
   function toggleFlag(r, c) {
-    if (ended || paused || generating || (replay.on && !replay.stepping) || settings.noFlag) return;
+    if (raceLocked || ended || paused || generating || (replay.prepared && !replay.stepping) || settings.noFlag) return;
     var i = r * cols + c;
     if (open[i]) return;
     if (settings.mode !== "speed") pushUndo();
@@ -579,7 +648,7 @@
   }
 
   function chord(r, c) {
-    if (!started || ended || settings.noFlag) return;
+    if (replay.prepared || raceLocked || !started || ended || settings.noFlag) return;
     var i = r * cols + c;
     if (!open[i] || !numbers || numbers[i] <= 0) return;
     var nflags = 0, hidden = [];
@@ -654,8 +723,15 @@
 
   function winSummary(ms) {
     var parts = ["用时 " + formatTime(ms)];
-    if (settings.mode === "speed") parts.push("点了 " + clickCount + " 次");
-    if (bbbv > 0 && ms > 0) {
+    if (isSpeed()) {
+      parts.push("点了 " + clickCount + " 次");
+      var prev = stats.best[diffEl.value + ":speed"];
+      if (prev) {
+        if (ms < prev.ms) parts.push("刷新了你的最佳");
+        else if (ms > prev.ms) parts.push("比最佳慢 " + formatTime(ms - prev.ms));
+        else parts.push("追平最佳");
+      } else parts.push("这是你的第一次成绩");
+    } else if (bbbv > 0 && ms > 0) {
       var pace = (ms / 1000) / bbbv;
       if (pace < 2.5) parts.push("推得很快");
       else if (pace < 5) parts.push("节奏不错");
@@ -710,7 +786,7 @@
     record(true, ms, bbvs, cps);
     maybeSubmitDaily(ms);
     maybeAutoBackup();
-    if (!inCampaign && settings.mode !== "zen") {
+    if (!inCampaign && settings.mode !== "zen" && !isSpeed()) {
       stats.streak = (stats.streak || 0) + 1;
       stats.lossStreak = 0;
       NG.saveStats(stats);
@@ -752,7 +828,7 @@
     $("face-btn").textContent = "✧";
     say("踩雷了。");
     $("overlay-title").textContent = "再试一次";
-    $("overlay-msg").textContent = "可以重新开局。";
+    $("overlay-msg").textContent = isSpeed() ? "这局结束了。再来会重新倒计时。" : "可以重新开局。";
     $("again-btn").textContent = "再来一局";
     delete overlay.dataset.nextLesson;
     overlay.classList.add("lose-fx");
@@ -760,10 +836,14 @@
     record(false, Math.round(nowElapsed()), "0", "0");
     stats.streak = 0;
     stats.lossStreak = (stats.lossStreak || 0) + 1;
-    var easier = NG.nextDiff(diffEl.value, -1);
-    if (stats.lossStreak >= 3 && easier) {
-      say("连续未过，下一局降到「" + NG.DIFFS[easier].label + "」。");
-      overlay.dataset.nextDiff = easier;
+    if (!isSpeed()) {
+      var easier = NG.nextDiff(diffEl.value, -1);
+      if (stats.lossStreak >= 3 && easier) {
+        say("连续未过，下一局降到「" + NG.DIFFS[easier].label + "」。");
+        overlay.dataset.nextDiff = easier;
+      } else {
+        delete overlay.dataset.nextDiff;
+      }
     } else {
       delete overlay.dataset.nextDiff;
     }
@@ -1067,6 +1147,7 @@
   }
 
   function doAnalyze() {
+    if (isSpeed()) { say("竞速模式不提供分析。"); return; }
     var info = analyze();
     if (!info) { say("先翻开第一格。"); return; }
     if (!info.safe.length && !info.mines.length && openCount + mineTotal < rows * cols) {
@@ -1077,7 +1158,7 @@
   }
 
   function togglePause() {
-    if (!started || ended || settings.mode === "zen") return;
+    if (!started || ended || settings.mode === "zen" || isSpeed()) return;
     paused = !paused;
     if (paused) {
       stopTick();
@@ -1374,33 +1455,116 @@
     a.click();
   }
 
-  function replayHtml() {
-    if (!lastRecord) return "<p>先完成或结束一局，才能复盘。</p>";
-    return '<div class="stats-list"><p>' + lastRecord.actions.length + ' 步 · ' + (lastRecord.won ? "胜利" : "失败") + '</p><div class="tools"><button type="button" class="text-btn" id="rp-play">播放</button><button type="button" class="text-btn" id="rp-step">下一步</button></div></div>';
+  function replayWait() {
+    return Math.max(160, Math.round(900 / (replay.rate || 1)));
   }
 
-  function startReplay() {
-    if (!lastRecord) return;
-    replay.on = true;
-    replay.actions = lastRecord.actions;
-    replay.index = 0;
-    numbers = null;
-    hide(modal);
-    say("复盘中。");
-    stepReplay();
+  function stopReplayClock() {
+    if (replay.timer) { clearTimeout(replay.timer); replay.timer = null; }
   }
+
+  function stopReplay() {
+    stopReplayClock();
+    replay.on = false;
+    replay.paused = false;
+    replay.stepping = false;
+    replay.prepared = false;
+    var bar = $("replay-bar");
+    if (bar) bar.classList.add("hidden");
+  }
+
+  function updateReplayBar() {
+    var bar = $("replay-bar");
+    if (!bar) return;
+    bar.classList.remove("hidden");
+    var total = replay.actions.length || (lastRecord && lastRecord.actions.length) || 0;
+    $("replay-status").textContent = "复盘 " + Math.min(replay.index, total) + " / " + total;
+    $("rp-toggle").textContent = replay.on && !replay.paused ? "暂停" : "播放";
+    bar.querySelectorAll("[data-rate]").forEach(function (b) {
+      b.classList.toggle("active", Number(b.dataset.rate) === replay.rate);
+    });
+  }
+
+  function prepareReplay() {
+    if (!lastRecord) return;
+    stopReplayClock();
+    clearRace();
+    var rec = lastRecord;
+    rows = rec.rows; cols = rec.cols; mineTotal = rec.mines;
+    seed = rec.seed; startR = rec.startR; startC = rec.startC;
+    fixedStart = true;
+    neigh = NG.buildNeighbors(rows, cols);
+    numbers = null; mines = null;
+    open = new Uint8Array(rows * cols);
+    flags = new Uint8Array(rows * cols);
+    started = false; ended = false; generating = false;
+    openCount = 0; flagCount = 0; clickCount = 0;
+    elapsed = 0; paused = false; bbbv = rec.bbbv || 0;
+    undoStack = []; redoStack = []; actions = [];
+    hide(overlay); hide(pauseLayer);
+    clearFx();
+    renderGrid();
+    paintHud();
+    if (startR >= 0 && cellBtn(startR, startC)) cellBtn(startR, startC).classList.add("start");
+    replay.actions = rec.actions.slice();
+    replay.index = 0;
+    replay.on = false;
+    replay.paused = false;
+    replay.prepared = true;
+    $("home").classList.add("hidden");
+    $("play").classList.remove("hidden");
+    updateReplayBar();
+  }
+
+  function scheduleReplay() {
+    stopReplayClock();
+    if (!replay.on || replay.paused) return;
+    replay.timer = setTimeout(function () {
+      replay.timer = null;
+      if (!replay.on || replay.paused) return;
+      if (generating) { scheduleReplay(); return; }
+      if (stepReplay()) scheduleReplay();
+    }, generating ? 70 : replayWait());
+  }
+
   function stepReplay() {
-    if (!replay.on) return;
-    if (generating) {
-      setTimeout(stepReplay, 40);
-      return;
-    }
+    if (!replay.prepared) return false;
+    if (generating) return true;
     var act = replay.actions[replay.index++];
-    if (!act) { replay.on = false; say("复盘结束。"); return; }
+    if (!act) {
+      replay.on = false;
+      say("复盘结束。");
+      updateReplayBar();
+      return false;
+    }
     replay.stepping = true;
     if (act.op === "open") openCell(act.r, act.c);
     else toggleFlag(act.r, act.c);
     replay.stepping = false;
+    if (replay.index >= replay.actions.length) {
+      replay.on = false;
+      replay.paused = false;
+      say("复盘结束。");
+    }
+    updateReplayBar();
+    return replay.on;
+  }
+
+  function toggleReplayPlay() {
+    if (!lastRecord) return;
+    var done = replay.prepared && replay.actions.length && replay.index >= replay.actions.length;
+    if (!replay.prepared || done) prepareReplay();
+    if (!replay.on || replay.paused) {
+      replay.on = true;
+      replay.paused = false;
+      scheduleReplay();
+      say("复盘播放中。");
+    } else {
+      replay.paused = true;
+      stopReplayClock();
+      say("复盘已暂停。");
+    }
+    updateReplayBar();
   }
 
   boardEl.addEventListener("click", function (e) {
@@ -1519,7 +1683,9 @@
   });
 
   document.addEventListener("keydown", function (e) {
+    if ($("play").classList.contains("hidden")) return;
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (raceLocked) { e.preventDefault(); return; }
     var r = (cursor / cols) | 0, c = cursor % cols;
     if (e.key === "ArrowLeft") { c = Math.max(0, c - 1); e.preventDefault(); }
     else if (e.key === "ArrowRight") { c = Math.min(cols - 1, c + 1); e.preventDefault(); }
@@ -1559,22 +1725,14 @@
   diffEl.onchange = function () {
     settings.diff = diffEl.value;
     NG.saveSettings(settings);
-    newGame();
+    if (!$("play").classList.contains("hidden")) newGame();
   };
   lessonEl.onchange = function () {
     settings.lessonIndex = Number(lessonEl.value) || 0;
     NG.saveSettings(settings);
-    newGame();
+    if (!$("play").classList.contains("hidden")) newGame();
   };
-  document.querySelectorAll(".mode-btn").forEach(function (b) {
-    b.onclick = function () {
-      settings.mode = b.dataset.mode;
-      if (settings.mode === "zen") settings.mineClick = "block";
-      NG.saveSettings(settings);
-      applyChrome();
-      newGame();
-    };
-  });
+  $("home-btn").onclick = leavePlay;
   $("face-btn").onclick = newGame;
   $("again-btn").onclick = newGame;
   $("hint-btn").onclick = hint;
@@ -1589,6 +1747,8 @@
   timerEl.onclick = togglePause;
   $("resume-btn").onclick = togglePause;
   $("apply-custom").onclick = function () {
+    diffEl.value = "custom";
+    settings.diff = "custom";
     var spec = currentSpec();
     $("cw").value = String(spec.cols);
     $("ch").value = String(spec.rows);
@@ -1601,7 +1761,8 @@
     if (spec.rows * spec.cols > 1200) {
       say("已调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
     }
-    newGame();
+    NG.saveSettings(settings);
+    enterPlay();
   };
   $("open-settings").onclick = function () { openModal("设置", settingsHtml()); bindSettings(); };
   $("open-stats").onclick = function () { openModal("统计", statsHtml()); bindStats(); };
@@ -1614,18 +1775,36 @@
     $("save-png").onclick = drawPng;
   };
   $("open-replay").onclick = function () {
-    openModal("复盘", replayHtml());
-    var play = $("rp-play");
-    var step = $("rp-step");
-    if (play) play.onclick = function () {
-      startReplay();
-      replay.timer = setInterval(function () {
-        if (!replay.on) { clearInterval(replay.timer); return; }
-        stepReplay();
-      }, 280);
-    };
-    if (step) step.onclick = function () { if (!replay.on) startReplay(); else stepReplay(); };
+    if (!lastRecord || !lastRecord.actions || !lastRecord.actions.length) {
+      openModal("复盘", "<p>先完成或结束一局，才能复盘。</p>");
+      return;
+    }
+    hide(modal);
+    prepareReplay();
+    say("可以播放、暂停，或调整倍速。1 倍大约每步一秒。");
   };
+  $("rp-toggle").onclick = toggleReplayPlay;
+  $("rp-step").onclick = function () {
+    if (!lastRecord) return;
+    if (!replay.prepared || replay.index >= replay.actions.length) prepareReplay();
+    replay.paused = true;
+    replay.on = true;
+    stopReplayClock();
+    if (!generating) stepReplay();
+    replay.on = false;
+    updateReplayBar();
+  };
+  $("rp-exit").onclick = function () {
+    stopReplay();
+    say("已退出复盘。");
+  };
+  document.querySelectorAll("#replay-bar [data-rate]").forEach(function (b) {
+    b.onclick = function () {
+      replay.rate = Number(b.dataset.rate) || 1;
+      if (replay.on && !replay.paused) scheduleReplay();
+      updateReplayBar();
+    };
+  });
   $("modal-close").onclick = function () { hide(modal); };
   modal.addEventListener("click", function (e) { if (e.target === modal) hide(modal); });
 
@@ -1633,19 +1812,203 @@
     navigator.serviceWorker.register("sw.js").catch(function () {});
   }
 
+  function setHero(text) {
+    var sub = $("hero-sub");
+    if (sub) sub.textContent = text;
+  }
+
+  function showOnly(id) {
+    menuScreens.forEach(function (name) {
+      var el = $(name);
+      if (el) el.classList.toggle("hidden", name !== id);
+    });
+  }
+
+  function stopPlaySurface() {
+    clearRace();
+    stopTick();
+    paused = false;
+    hide(pauseLayer);
+    hide(overlay);
+    stopReplay();
+  }
+
+  function showHome() {
+    stopPlaySurface();
+    showOnly("home");
+    setHero("先选一种玩法");
+  }
+
+  function showBoards() {
+    var names = { practice: "练习模式", speed: "竞速模式", zen: "禅模式" };
+    var notes = {
+      practice: "可以提示、撤销。选一盘开始。",
+      speed: "倒计时后开跑，没有提示，也不能暂停。",
+      zen: "不计时，踩到雷也不会结束。",
+    };
+    $("boards-title").textContent = (names[settings.mode] || "选一盘") + " · 选盘面";
+    $("boards-note").textContent = notes[settings.mode] || "";
+    showOnly("page-boards");
+    setHero(names[settings.mode] || "选一盘");
+  }
+
+  function nextCampaignIndex() {
+    var n = settings.campaignBest | 0;
+    if (n < 0) n = 0;
+    if (n >= NG.LESSONS.length) return NG.LESSONS.length - 1;
+    return n;
+  }
+
+  function paintCampaign() {
+    var cleared = settings.campaignBest | 0;
+    var total = NG.LESSONS.length;
+    var next = nextCampaignIndex();
+    var doneAll = cleared >= total;
+    $("campaign-progress").textContent = doneAll
+      ? total + " 关都过了，可以重打任意一关。"
+      : "已通过 " + cleared + " / " + total + " 关";
+    $("campaign-continue").textContent = doneAll
+      ? "再打第 " + (next + 1) + " 关"
+      : (cleared ? "继续第 " + (next + 1) + " 关" : "从第 1 关开始");
+    var box = $("campaign-cards");
+    box.innerHTML = "";
+    var last = "";
+    NG.LESSONS.forEach(function (ls, i) {
+      if (ls.chapter !== last) {
+        last = ls.chapter;
+        var h = document.createElement("p");
+        h.className = "home-kicker chapter-break";
+        h.textContent = ls.chapter;
+        box.appendChild(h);
+      }
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "pick-card" + (i < cleared ? " done" : "") + (i === next && !doneAll ? " current" : "");
+      var mark = i < cleared ? "已过" : (i === next ? "当前" : "未开");
+      card.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + mark + " · " + (ls.chapter || "") + "</span>";
+      card.onclick = function () { chooseLesson(i, "campaign"); };
+      box.appendChild(card);
+    });
+  }
+
+  function showCampaign() {
+    settings.mode = "practice";
+    NG.saveSettings(settings);
+    applyChrome();
+    paintCampaign();
+    showOnly("page-campaign");
+    setHero("闯关模式");
+  }
+
+  function paintTeach() {
+    var box = $("teach-cards");
+    box.innerHTML = "";
+    var last = "";
+    NG.LESSONS.forEach(function (ls, i) {
+      if (ls.chapter !== last) {
+        last = ls.chapter;
+        var h = document.createElement("p");
+        h.className = "home-kicker chapter-break";
+        h.textContent = ls.chapter;
+        box.appendChild(h);
+      }
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "pick-card";
+      card.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + ls.text + "</span>";
+      card.onclick = function () { chooseLesson(i, "teach"); };
+      box.appendChild(card);
+    });
+  }
+
+  function showTeach() {
+    settings.mode = "practice";
+    NG.saveSettings(settings);
+    applyChrome();
+    showOnly("page-teach");
+    setHero("教学关卡");
+  }
+
+  function leavePlay() {
+    stopPlaySurface();
+    if (screenFrom === "boards") showBoards();
+    else if (screenFrom === "campaign") showCampaign();
+    else if (screenFrom === "teach") showTeach();
+    else showHome();
+  }
+
+  function enterPlay() {
+    showOnly("play");
+    applyChrome();
+    resetBoard();
+    setHero(playTitle());
+  }
+
+  function chooseDiff(id) {
+    settings.diff = id;
+    diffEl.value = id;
+    NG.saveSettings(settings);
+    screenFrom = "boards";
+    enterPlay();
+  }
+
+  function chooseLesson(i, from) {
+    settings.diff = "lesson";
+    settings.mode = "practice";
+    settings.lessonIndex = i;
+    diffEl.value = "lesson";
+    lessonEl.value = String(i);
+    NG.saveSettings(settings);
+    screenFrom = from || "teach";
+    enterPlay();
+  }
+
+  function fillHome() {
+    var boards = $("board-cards");
+    boards.innerHTML = "";
+    Object.keys(NG.DIFFS).forEach(function (id) {
+      var d = NG.DIFFS[id];
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "pick-card";
+      b.innerHTML = "<strong>" + d.label + "</strong><span>" + d.group + " · " + d.cols + "×" + d.rows + " · " + d.mines + " 雷</span>";
+      b.onclick = function () { chooseDiff(id); };
+      boards.appendChild(b);
+    });
+    paintTeach();
+    document.querySelectorAll("#home .pick-card").forEach(function (b) {
+      b.onclick = function () {
+        if (b.dataset.go === "campaign") { screenFrom = "campaign"; showCampaign(); return; }
+        if (b.dataset.go === "teach") { screenFrom = "teach"; showTeach(); return; }
+        settings.mode = b.dataset.mode || "practice";
+        if (settings.mode === "zen") settings.mineClick = "block";
+        NG.saveSettings(settings);
+        applyChrome();
+        screenFrom = "boards";
+        showBoards();
+      };
+    });
+    $("boards-back").onclick = showHome;
+    $("campaign-back").onclick = showHome;
+    $("teach-back").onclick = showHome;
+    $("daily-card").onclick = function () { chooseDiff("daily"); };
+    $("campaign-continue").onclick = function () { chooseLesson(nextCampaignIndex(), "campaign"); };
+  }
+
+  if (/[#&?]mockCloud=1/.test(location.href)) NG.installMockCloud();
   fillDiffs();
+  fillHome();
   applyChrome();
   NG.startAmbiance({
     enabled: settings.motion !== false && (settings.theme === "soft" || settings.theme === "dark"),
   });
-  if (location.hash.indexOf("d=") >= 0) {
+  if (location.hash.indexOf("d=") >= 0 || location.hash.indexOf("s=") >= 0) {
     var preset = new URLSearchParams(location.hash.slice(1)).get("d");
     if (preset && diffEl.querySelector('option[value="' + preset + '"]')) diffEl.value = preset;
+    enterPlay();
+  } else {
+    showHome();
   }
-  if (/[#&?]mockCloud=1/.test(location.href)) {
-    NG.installMockCloud();
-  }
-  resetBoard();
   if (NG._mockCloud) say("已开启本地云端模拟。");
   bootstrapOnline();
 

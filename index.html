@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <div class="bg-wash" aria-hidden="true"></div>
@@ -18,30 +18,82 @@
     <header class="hero">
       <p class="brand">无猜扫雷</p>
       <h1 class="tagline">不用猜，每一步都能推出来</h1>
-      <p class="sub">打开就能玩</p>
+      <p class="sub" id="hero-sub">先选一种玩法</p>
     </header>
 
-    <section class="panel" aria-label="游戏控制">
-      <div class="controls">
-        <label class="field">难度
-          <select id="diff"></select>
-        </label>
-        <label class="field lesson-field hidden" id="lesson-field">关卡
-          <select id="lesson"></select>
-        </label>
-        <div class="modes" role="group" aria-label="模式">
-          <button type="button" class="mode-btn" data-mode="practice">练习</button>
-          <button type="button" class="mode-btn" data-mode="speed">竞速</button>
-          <button type="button" class="mode-btn" data-mode="zen">禅</button>
-        </div>
+    <section class="home" id="home" aria-label="首页">
+      <div class="card-grid home-modes">
+        <button type="button" class="pick-card" data-go="boards" data-mode="practice">
+          <strong>练习模式</strong>
+          <span>可以提示、撤销，慢慢推</span>
+        </button>
+        <button type="button" class="pick-card" data-go="boards" data-mode="speed">
+          <strong>竞速模式</strong>
+          <span>倒计时开跑。没有提示，也不能暂停</span>
+        </button>
+        <button type="button" class="pick-card" data-go="boards" data-mode="zen">
+          <strong>禅模式</strong>
+          <span>不计时。踩到雷也不会结束</span>
+        </button>
+        <button type="button" class="pick-card" data-go="campaign">
+          <strong>闯关模式</strong>
+          <span>按顺序过关，记下进度</span>
+        </button>
+        <button type="button" class="pick-card" data-go="teach">
+          <strong>教学关卡</strong>
+          <span>按章节看定式，想学哪关点哪关</span>
+        </button>
       </div>
+    </section>
 
-      <div class="custom hidden" id="custom">
+    <section class="home hidden" id="page-boards" aria-label="选盘面">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="boards-back">返回</button>
+        <p class="home-kicker" id="boards-title">选一盘</p>
+      </div>
+      <p class="hint" id="boards-note"></p>
+      <div class="card-grid" id="board-cards"></div>
+      <div class="card-grid">
+        <button type="button" class="pick-card" id="daily-card">
+          <strong>每日挑战</strong>
+          <span>今天大家同一盘</span>
+        </button>
+      </div>
+      <div class="custom" id="custom">
         <label>宽 <input id="cw" type="number" min="5" max="50" value="9" /></label>
         <label>高 <input id="ch" type="number" min="5" max="40" value="9" /></label>
         <label>雷 <input id="cm" type="number" min="1" max="400" value="10" /></label>
-        <button type="button" class="text-btn" id="apply-custom">开始</button>
+        <button type="button" class="text-btn" id="apply-custom">开始这盘</button>
       </div>
+    </section>
+
+    <section class="home hidden" id="page-campaign" aria-label="闯关">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="campaign-back">返回</button>
+        <p class="home-kicker">闯关</p>
+      </div>
+      <p class="hint" id="campaign-progress"></p>
+      <button type="button" class="primary-btn" id="campaign-continue">从第 1 关开始</button>
+      <div class="card-grid" id="campaign-cards"></div>
+    </section>
+
+    <section class="home hidden" id="page-teach" aria-label="教学关卡">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="teach-back">返回</button>
+        <p class="home-kicker">教学关卡</p>
+      </div>
+      <p class="hint">点一关就只练这一手定式。</p>
+      <div class="card-grid" id="teach-cards"></div>
+    </section>
+
+    <section class="play hidden" id="play">
+    <section class="panel" aria-label="游戏控制">
+      <div class="controls">
+        <button type="button" class="text-btn" id="home-btn">返回</button>
+        <p class="play-label" id="play-label">练习</p>
+      </div>
+      <select id="diff" class="hidden" tabindex="-1" aria-hidden="true"></select>
+      <select id="lesson" class="hidden" tabindex="-1" aria-hidden="true"></select>
 
       <div class="hud">
         <div class="stat">
@@ -54,19 +106,21 @@
           <button type="button" class="stat-value timer-btn" id="timer" title="暂停">0.00</button>
         </div>
         <div class="stat">
-          <span class="stat-label">进度</span>
+          <span class="stat-label" id="progress-label">进度</span>
           <span class="stat-value" id="progress">0%</span>
         </div>
       </div>
 
       <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键插旗。</p>
 
-      <div class="tools">
+      <div class="tools" id="assist-tools">
         <button type="button" class="text-btn" id="hint-btn">提示</button>
         <button type="button" class="text-btn" id="undo-btn">撤销</button>
         <button type="button" class="text-btn" id="redo-btn">重做</button>
-        <button type="button" class="text-btn" id="flag-mode">翻开</button>
         <button type="button" class="text-btn" id="analyze-btn">分析</button>
+      </div>
+      <div class="tools">
+        <button type="button" class="text-btn" id="flag-mode">翻开</button>
       </div>
     </section>
 
@@ -80,12 +134,31 @@
           <button type="button" class="primary-btn" id="again-btn">再来一局</button>
         </div>
       </div>
+      <div class="overlay hidden" id="race-gate">
+        <div class="overlay-card">
+          <p class="overlay-title" id="race-count">3</p>
+          <p class="overlay-msg" id="race-msg">准备</p>
+        </div>
+      </div>
       <div class="overlay hidden" id="pause-layer">
         <div class="overlay-card">
           <p class="overlay-title">已暂停</p>
           <button type="button" class="primary-btn" id="resume-btn">继续</button>
         </div>
       </div>
+    </section>
+
+    <div class="replay-bar hidden" id="replay-bar">
+      <span id="replay-status">复盘</span>
+      <button type="button" class="text-btn" id="rp-toggle">播放</button>
+      <button type="button" class="text-btn" data-rate="0.5">0.5×</button>
+      <button type="button" class="text-btn active" data-rate="1">1×</button>
+      <button type="button" class="text-btn" data-rate="2">2×</button>
+      <button type="button" class="text-btn" data-rate="4">4×</button>
+      <button type="button" class="text-btn" id="rp-step">下一步</button>
+      <button type="button" class="text-btn" id="rp-exit">退出</button>
+    </div>
+
     </section>
 
     <footer class="foot">
@@ -113,6 +186,6 @@
   <script src="js/persist.js?v=8"></script>
   <script src="js/cloud.js?v=3"></script>
   <script src="js/ambiance.js?v=1"></script>
-  <script src="js/game.js?v=18"></script>
+  <script src="js/game.js?v=21"></script>
 </body>
 </html>
