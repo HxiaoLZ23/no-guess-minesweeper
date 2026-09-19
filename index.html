@@ -1,118 +1,218 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="soft" data-palette="classic">
+<html lang="en" data-theme="soft" data-palette="classic">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#152a45" />
-  <title>无猜扫雷</title>
+  <title>No-Guess Minesweeper</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body>
   <div class="bg-wash" aria-hidden="true"></div>
   <main class="app">
     <header class="hero">
-      <p class="brand">无猜扫雷</p>
-      <h1 class="tagline">不用猜，每一步都能推出来</h1>
-      <p class="sub">打开就能玩</p>
+      <p class="brand" data-i18n="brand">No-Guess Minesweeper</p>
+      <h1 class="tagline" data-i18n="tagline">Every step can be determined by logic</h1>
+      <p class="sub" id="hero-sub" data-i18n="hero.choose">Choose a mode</p>
     </header>
 
-    <section class="panel" aria-label="游戏控制">
-      <div class="controls">
-        <label class="field">难度
-          <select id="diff"></select>
-        </label>
-        <label class="field lesson-field hidden" id="lesson-field">关卡
-          <select id="lesson"></select>
-        </label>
-        <div class="modes" role="group" aria-label="模式">
-          <button type="button" class="mode-btn" data-mode="practice">练习</button>
-          <button type="button" class="mode-btn" data-mode="speed">竞速</button>
-          <button type="button" class="mode-btn" data-mode="zen">禅</button>
-        </div>
+    <section class="home" id="home" data-i18n-aria="hero.choose" aria-label="Choose a mode">
+      <div class="card-grid home-modes">
+        <button type="button" class="pick-card" data-go="boards" data-mode="practice">
+          <strong data-i18n="mode.practice">Practice</strong>
+          <span data-i18n="mode.practiceSub">Hints and undo are available</span>
+        </button>
+        <button type="button" class="pick-card" data-go="boards" data-mode="speed">
+          <strong data-i18n="mode.speed">Speed</strong>
+          <span data-i18n="mode.speedSub">Starts after a countdown. No hints, and pause is disabled</span>
+        </button>
+        <button type="button" class="pick-card" data-go="boards" data-mode="zen">
+          <strong data-i18n="mode.zen">Zen</strong>
+          <span data-i18n="mode.zenSub">No timer. Hitting a mine does not end the game</span>
+        </button>
+        <button type="button" class="pick-card" data-go="campaign">
+          <strong data-i18n="mode.campaign">Campaign</strong>
+          <span data-i18n="mode.campaignSub">From 8×8, width and height increase in turn</span>
+        </button>
+        <button type="button" class="pick-card" data-go="teach">
+          <strong data-i18n="mode.teach">Lessons</strong>
+          <span data-i18n="mode.teachSub">Study patterns by chapter, and choose any lesson</span>
+        </button>
       </div>
+    </section>
 
-      <div class="custom hidden" id="custom">
-        <label>宽 <input id="cw" type="number" min="5" max="50" value="9" /></label>
-        <label>高 <input id="ch" type="number" min="5" max="40" value="9" /></label>
-        <label>雷 <input id="cm" type="number" min="1" max="400" value="10" /></label>
-        <button type="button" class="text-btn" id="apply-custom">开始</button>
+    <section class="home hidden" id="page-boards" data-i18n-aria="boards.pick" aria-label="Choose a board">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="boards-back" data-i18n="nav.back">Back</button>
+        <p class="home-kicker" id="boards-title" data-i18n="boards.pick">Choose a board</p>
       </div>
+      <p class="hint" id="boards-note"></p>
+      <div class="card-grid" id="board-cards"></div>
+      <div class="custom hidden" id="custom">
+        <label><span data-i18n="field.w">Width</span> <input id="cw" type="number" min="5" max="50" value="9" /></label>
+        <label><span data-i18n="field.h">Height</span> <input id="ch" type="number" min="5" max="40" value="9" /></label>
+        <label><span data-i18n="field.m">Mines</span> <input id="cm" type="number" min="1" max="400" value="10" /></label>
+        <button type="button" class="text-btn" id="apply-custom" data-i18n="custom.go">Start this board</button>
+      </div>
+    </section>
+
+    <section class="home hidden" id="page-campaign" data-i18n-aria="camp.title" aria-label="Campaign">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="campaign-back" data-i18n="nav.back">Back</button>
+        <p class="home-kicker" data-i18n="camp.title">Campaign</p>
+      </div>
+      <p class="hint" data-i18n="camp.intro">Stages begin at 8×8 and grow in the order 8×8, 8×9, 9×9, 9×10. Each stage can be solved by logic.</p>
+      <p class="hint" id="campaign-progress"></p>
+      <button type="button" class="primary-btn" id="campaign-continue" data-i18n="camp.start">Start at stage 1</button>
+      <div class="card-grid" id="campaign-cards"></div>
+    </section>
+
+    <section class="home hidden" id="page-teach" data-i18n-aria="teach.title" aria-label="Lessons">
+      <div class="page-head">
+        <button type="button" class="text-btn" id="teach-back" data-i18n="nav.back">Back</button>
+        <p class="home-kicker" data-i18n="teach.title">Lessons</p>
+      </div>
+      <p class="hint" data-i18n="teach.intro">Select a title to start. The analysis can be opened first.</p>
+      <div class="card-grid" id="teach-cards"></div>
+    </section>
+
+    <section class="play hidden" id="play">
+    <section class="panel" data-i18n-aria="face.new" aria-label="Game controls">
+      <div class="controls">
+        <button type="button" class="text-btn" id="home-btn" data-i18n="nav.back">Back</button>
+        <p class="play-label" id="play-label" data-i18n="mode.practiceShort">Practice</p>
+      </div>
+      <select id="diff" class="hidden" tabindex="-1" aria-hidden="true"></select>
+      <select id="lesson" class="hidden" tabindex="-1" aria-hidden="true"></select>
 
       <div class="hud">
         <div class="stat">
-          <span class="stat-label">剩余</span>
+          <span class="stat-label" data-i18n="stat.left">Left</span>
           <span class="stat-value" id="mine-count">10</span>
         </div>
-        <button type="button" class="face" id="face-btn" title="新游戏" aria-label="新游戏">◎</button>
+        <button type="button" class="face" id="face-btn" data-i18n-title="face.new" data-i18n-aria="face.new" title="New game" aria-label="New game">◎</button>
         <div class="stat">
-          <span class="stat-label">用时</span>
-          <button type="button" class="stat-value timer-btn" id="timer" title="暂停">0.00</button>
+          <span class="stat-label" data-i18n="stat.time">Time</span>
+          <button type="button" class="stat-value timer-btn" id="timer" data-i18n-title="timer.pause" title="Pause">0.00</button>
         </div>
         <div class="stat">
-          <span class="stat-label">进度</span>
+          <span class="stat-label" id="progress-label" data-i18n="stat.progress">Progress</span>
           <span class="stat-value" id="progress">0%</span>
         </div>
       </div>
 
-      <p class="hint" id="status" role="status" aria-live="polite">左键翻开，右键插旗。</p>
+      <p class="hint" id="status" role="status" aria-live="polite" data-i18n="status.idle">Left-click to open, right-click to flag. When the flags around a number are complete, double-click or middle-click that cell to open the rest.</p>
+      <div class="lesson-read hidden" id="lesson-read">
+        <button type="button" class="text-btn" id="lesson-read-btn" data-i18n="analysis.show">Show analysis</button>
+        <p class="lesson-read-body hidden" id="lesson-read-body"></p>
+      </div>
 
+      <div class="tools" id="assist-tools">
+        <button type="button" class="text-btn" id="hint-btn" data-i18n="tool.hint">Hint</button>
+        <button type="button" class="text-btn" id="undo-btn" data-i18n="tool.undo">Undo</button>
+        <button type="button" class="text-btn" id="redo-btn" data-i18n="tool.redo">Redo</button>
+        <button type="button" class="text-btn" id="analyze-btn" data-i18n="tool.analyze">Analyze</button>
+      </div>
       <div class="tools">
-        <button type="button" class="text-btn" id="hint-btn">提示</button>
-        <button type="button" class="text-btn" id="undo-btn">撤销</button>
-        <button type="button" class="text-btn" id="redo-btn">重做</button>
-        <button type="button" class="text-btn" id="flag-mode">翻开</button>
-        <button type="button" class="text-btn" id="analyze-btn">分析</button>
+        <button type="button" class="text-btn" id="flag-mode" data-i18n="act.open">Open</button>
       </div>
     </section>
 
     <section class="board-wrap" id="board-wrap">
-      <div class="board" id="board" role="grid" aria-label="雷区"></div>
+      <div class="board" id="board" role="grid" data-i18n-aria="board.aria" aria-label="Minefield"></div>
       <div class="fx-layer" id="fx-layer" aria-hidden="true"></div>
       <div class="overlay hidden" id="overlay">
         <div class="overlay-card">
-          <p class="overlay-title" id="overlay-title">胜利</p>
+          <p class="overlay-title" id="overlay-title" data-i18n="win.title">Cleared</p>
           <p class="overlay-msg" id="overlay-msg"></p>
-          <button type="button" class="primary-btn" id="again-btn">再来一局</button>
+          <button type="button" class="primary-btn" id="again-btn" data-i18n="again">Play again</button>
+        </div>
+      </div>
+      <div class="overlay hidden" id="race-gate">
+        <div class="overlay-card">
+          <p class="overlay-title" id="race-count">3</p>
+          <p class="overlay-msg" id="race-msg" data-i18n="race.ready">Ready</p>
         </div>
       </div>
       <div class="overlay hidden" id="pause-layer">
         <div class="overlay-card">
-          <p class="overlay-title">已暂停</p>
-          <button type="button" class="primary-btn" id="resume-btn">继续</button>
+          <p class="overlay-title" data-i18n="paused">Paused</p>
+          <button type="button" class="primary-btn" id="resume-btn" data-i18n="resume">Resume</button>
         </div>
       </div>
     </section>
 
+    <div class="replay-bar hidden" id="replay-bar">
+      <span id="replay-status" data-i18n="replay.label">Replay</span>
+      <button type="button" class="text-btn" id="rp-toggle" data-i18n="replay.play">Play</button>
+      <button type="button" class="text-btn" data-rate="0.5">0.5×</button>
+      <button type="button" class="text-btn active" data-rate="1">1×</button>
+      <button type="button" class="text-btn" data-rate="2">2×</button>
+      <button type="button" class="text-btn" data-rate="4">4×</button>
+      <button type="button" class="text-btn" id="rp-step" data-i18n="replay.next">Next</button>
+      <button type="button" class="text-btn" id="rp-exit" data-i18n="replay.exit">Exit</button>
+    </div>
+
+    </section>
+
     <footer class="foot">
-      <button type="button" class="text-btn" id="open-settings">设置</button>
-      <button type="button" class="text-btn" id="open-stats">统计</button>
-      <button type="button" class="text-btn" id="open-share">分享</button>
-      <button type="button" class="text-btn" id="open-replay">复盘</button>
-      <span class="foot-note">方向键 · 空格翻开 · F 插旗</span>
+      <button type="button" class="text-btn icon-btn" id="open-settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.05.24.26.42.5.42h3.84c.24 0 .45-.18.5-.42l.36-2.54c.58-.22 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
+        <span data-i18n="foot.settings">Settings</span>
+      </button>
+      <button type="button" class="text-btn icon-btn" id="open-stats">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 19h16v2H2V3h2v16zm3-2V11h3v6H7zm5 0V6h3v11h-3zm5 0v-4h3v4h-3z"/></svg>
+        <span data-i18n="foot.stats">Stats</span>
+      </button>
+      <button type="button" class="text-btn icon-btn" id="open-share">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a2.5 2.5 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .05.51L8 9.62a3 3 0 1 0 0 4.76l7.12 4.16c-.03.16-.05.33-.05.5a3 3 0 1 0 3-2.96z"/></svg>
+        <span data-i18n="foot.share">Share</span>
+      </button>
+      <button type="button" class="text-btn icon-btn" id="open-replay">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5V2L7 7l5 5V8a6 6 0 1 1-5.2 3H4.7A8 8 0 1 0 12 5z"/></svg>
+        <span data-i18n="foot.replay">Replay</span>
+      </button>
+      <label class="foot-lang">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 .01 20.01A10 10 0 0 0 12 2zm7.93 9h-3.17a15.7 15.7 0 0 0-1.2-5.02A8.03 8.03 0 0 1 19.93 11zM12 4.07c.7 1.14 1.35 2.9 1.68 4.93h-3.36C10.65 6.97 11.3 5.21 12 4.07zM4.07 13h3.17c.22 1.84.7 3.55 1.2 5.02A8.03 8.03 0 0 1 4.07 13zm3.17-2H4.07a8.03 8.03 0 0 1 4.37-5.02A15.7 15.7 0 0 0 7.24 11zM12 19.93c-.7-1.14-1.35-2.9-1.68-4.93h3.36c-.33 2.03-.98 3.79-1.68 4.93zM13.68 13h-3.36a13.6 13.6 0 0 1 0-2h3.36a13.6 13.6 0 0 1 0 2zm2.11 5.02c.5-1.47.98-3.18 1.2-5.02h3.17a8.03 8.03 0 0 1-4.37 5.02z"/></svg>
+        <select id="lang-select" data-i18n-aria="foot.lang" aria-label="Language"></select>
+      </label>
+      <span class="foot-note" data-i18n="foot.keys">Arrow keys · Space to open · F to flag</span>
+      <a class="text-btn foot-github icon-btn" href="https://github.com/HxiaoLZ23/no-guess-minesweeper" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.68 7.68 0 0 1 8 4.84c.68.003 1.36.092 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
     </footer>
   </main>
 
   <div class="modal hidden" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-card">
       <div class="modal-head">
-        <h2 id="modal-title">设置</h2>
-        <button type="button" class="text-btn" id="modal-close">关闭</button>
+        <h2 id="modal-title" data-i18n="modal.settings">Settings</h2>
+        <button type="button" class="text-btn" id="modal-close" data-i18n="close">Close</button>
       </div>
       <div id="modal-body"></div>
     </div>
   </div>
 
-  <script src="js/util.js?v=8"></script>
-  <script src="js/solver.js?v=5"></script>
-  <script src="js/generate.js?v=12"></script>
-  <script src="js/persist.js?v=7"></script>
+  <script src="js/i18n.js?v=2"></script>
+  <script src="js/i18n-packs.js?v=3"></script>
+  <script src="js/i18n-hant.js?v=2"></script>
+  <script src="js/i18n-cjk.js?v=1"></script>
+  <script src="js/i18n-west.js?v=1"></script>
+  <script src="js/i18n-de-pt.js?v=1"></script>
+  <script src="js/i18n-ru-ar.js?v=1"></script>
+  <script src="js/util.js?v=13"></script>
+  <script src="js/solver.js?v=6"></script>
+  <script src="js/generate.js?v=14"></script>
+  <script src="js/persist.js?v=10"></script>
+  <script src="js/campaign.js?v=4"></script>
   <script src="js/cloud.js?v=3"></script>
   <script src="js/ambiance.js?v=1"></script>
-  <script src="js/game.js?v=16"></script>
+  <script src="js/game.js?v=26"></script>
 </body>
 </html>

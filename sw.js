@@ -1,4 +1,4 @@
-var CACHE = "ng-minesweeper-v5";
+var CACHE = "ng-minesweeper-v15";
 var FILES = [
   "./",
   "./index.html",
@@ -11,10 +11,18 @@ var FILES = [
   "./assets/mine.svg",
   "./assets/spark.svg",
   "./assets/boom.svg",
+  "./js/i18n.js",
+  "./js/i18n-packs.js",
+  "./js/i18n-hant.js",
+  "./js/i18n-cjk.js",
+  "./js/i18n-west.js",
+  "./js/i18n-de-pt.js",
+  "./js/i18n-ru-ar.js",
   "./js/util.js",
   "./js/solver.js",
   "./js/generate.js",
   "./js/persist.js",
+  "./js/campaign.js",
   "./js/cloud.js",
   "./js/ambiance.js",
   "./js/game.js",
