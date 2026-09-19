@@ -34,7 +34,7 @@ NG.CAMPAIGN = [
 
 function stage(cols, rows, startC, startR, mines) {
   var side = Math.max(cols, rows);
-  var chapter = side <= 10 ? "初级" : side <= 14 ? "中级" : "高级";
+  var chapter = side <= 10 ? "beginner" : side <= 14 ? "intermediate" : "expert";
   var cell = NG.cellFor(rows, cols);
   return {
     id: "s" + cols + "x" + rows,

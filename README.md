@@ -1,41 +1,45 @@
-# 无猜扫雷
+# No-Guess Minesweeper
 
-每一局都能靠逻辑完成，不必猜测。
+[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Português](README.pt.md) · [Русский](README.ru.md) · [العربية](README.ar.md)
 
-在线：https://hxiaolz23.github.io/no-guess-minesweeper/
+Every board can be finished by logic. Guessing is not required.
 
-## 怎么玩
+Play: https://hxiaolz23.github.io/no-guess-minesweeper/
 
-- **电脑**：左键翻开，右键标旗；双击或中键展开周围
-- **手机**：点按翻开，长按标旗；可切换「翻开 / 标旗」，双指缩放
-- **键盘**：方向键移动，空格翻开，F 插旗，Z 撤销，H 提示
-- 打开后先在首页选模式。练习、竞速、禅再进下一页选盘面；闯关和教学关卡各自有一页。
+The interface is available in English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese, Russian, and Arabic. English is the default.
 
-## 难度与模式
+## How to play
 
-- 经典：初级 / 中级 / 高级
-- 疏雷、匀雷、密雷：雷数较少，便于练习
-- 练习先选雷数较少的盘面，再进行经典雷数；竞速只计经典三档和每日挑战；禅模式不计时，可自定尺寸
-- 闯关自 8×8 起，按 8×8、8×9、9×9、9×10 的顺序增大，直到 18×18
-- 教学关卡可展开完整解析
-- 练习：可以提示、撤销、暂停
-- 竞速：倒计时开跑，没有提示，不能暂停，记下点击次数和最佳用时
-- 禅：不计时，踩雷不结束
-- 复盘可暂停，并按 0.5× / 1× / 2× / 4× 播放
+- **Desktop**: left-click to open, right-click to flag. When the flags around a number are complete, double-click or middle-click that cell to open the rest.
+- **Phone**: tap to open, long-press to flag. Switch between Open and Flag. Pinch to zoom.
+- **Keyboard**: arrow keys move, Space opens, F flags, Z undoes, H asks for a hint.
+- Choose a mode on the home page. Practice, Speed, and Zen continue to a board picker. Campaign and Lessons each have their own page.
 
-## 本地与可选云端
+## Difficulties and modes
 
-默认完全离线。设置里可导出 / 导入进度。
+- Classic: Beginner, Intermediate, and Expert.
+- Sparse, Even, and Dense use fewer mines and are meant for practice.
+- In Practice, start with the lower mine counts, then play the classic counts. Speed records only the three classic sizes and the daily challenge. Zen has no timer, and the size can be set freely.
+- Campaign starts at 8×8 and grows in the order 8×8, 8×9, 9×9, 9×10, up to 18×18.
+- Each lesson can show a full analysis.
+- Practice allows hints, undo, and pause.
+- Speed starts after a countdown. There are no hints, and pause is disabled. Clicks and the best time are recorded.
+- Zen has no timer. Opening a mine does not end the game.
+- Replay can be paused and played at 0.5×, 1×, 2×, or 4×.
 
-若配置了同步端点，还可云备份和每日榜（失败不影响游玩）。部署说明见 [`cloud/README.md`](cloud/README.md)。
+## Local play and optional cloud
 
-## 启动
+The game works fully offline. Progress can be exported and imported in Settings.
 
-- 双击 `index.html`，或打开上面的网页
-- 也可安装为 PWA 离线使用
+A sync endpoint adds cloud backup and the daily board. A failure does not stop play. See [`cloud/README.md`](cloud/README.md).
 
-不做实时对战。比速度请用分享链接。
+## Start
 
-## 贡献者
+- Open `index.html`, or use the link above.
+- The game can also be installed as a PWA and used offline.
 
-见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
+There is no realtime match. To compare times, share a link.
+
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md).

@@ -17,6 +17,7 @@ NG.defaultSettings = function () {
     mineClick: "lose",
     cell: 32,
     largeText: false,
+    lang: "en",
     mode: "practice",
     diff: "easy",
     lessonIndex: 0,

@@ -393,6 +393,46 @@ html[data-theme="dark"] .overlay.lose-fx { background: rgba(40, 16, 16, .72); }
 .board-wrap.lose-dim .board {
   animation: board-lose .55s ease;
 }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+.icon-btn svg, .foot-lang svg {
+  width: 1.05em;
+  height: 1.05em;
+  flex: 0 0 auto;
+  display: block;
+}
+.foot-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  background: rgba(30, 50, 72, .55);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: .2rem .55rem .2rem .7rem;
+}
+html[data-theme="classic"] .foot-lang,
+html[data-theme="pixel"] .foot-lang { background: rgba(255,255,255,.45); }
+.foot-lang select {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  padding: .25rem .1rem;
+  max-width: 9.5rem;
+}
+html[dir="rtl"] .hero,
+html[dir="rtl"] .home,
+html[dir="rtl"] .panel,
+html[dir="rtl"] .foot,
+html[dir="rtl"] .modal-card,
+html[dir="rtl"] .replay-bar { direction: rtl; }
+.board, .board-wrap { direction: ltr; }
+html:not([lang="zh-CN"]):not([lang="zh-TW"]) { --display: "Nunito", "Segoe UI", sans-serif; }
 .foot { justify-content: center; color: var(--muted); }
 .foot-note { font-size: .8rem; }
 .foot-github {

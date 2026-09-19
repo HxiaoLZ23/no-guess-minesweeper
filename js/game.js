@@ -41,8 +41,19 @@
   var raceTimer = null;
   var screenFrom = "home";
   var menuScreens = ["home", "page-boards", "page-campaign", "page-teach", "play"];
+  var modalKind = "";
 
   function $(id) { return document.getElementById(id); }
+  function t(k, v) { return NG.t(k, v); }
+  function lf(ls, field) { return NG.lessonField(ls, field); }
+  function chName(key) { return NG.chapterName(key); }
+  function sayReason(code) {
+    if (code === "tooMany") return t("gen.tooMany");
+    if (code === "density") return t("gen.density");
+    if (!code) return t("gen.fail");
+    var mapped = t("gen." + code);
+    return mapped.indexOf("gen.") === 0 ? String(code) : mapped;
+  }
 
   function applyChrome() {
     document.documentElement.dataset.theme = settings.theme;
@@ -70,26 +81,30 @@
     var assist = $("assist-tools");
     if (assist) assist.classList.toggle("hidden", speed);
     var pl = $("progress-label");
-    if (pl) pl.textContent = speed ? "点击" : "进度";
-    if (timerEl) timerEl.title = speed ? "竞速不能暂停" : "暂停";
+    if (pl) pl.textContent = speed ? t("stat.clicks") : t("stat.progress");
+    if (timerEl) timerEl.title = speed ? t("timer.locked") : t("timer.pause");
     var label = $("play-label");
     if (label && diffEl && diffEl.options.length) label.textContent = playTitle();
   }
 
   function playTitle() {
-    var modeName = { practice: "练习", speed: "竞速", zen: "禅" }[settings.mode] || "练习";
+    var modeName = {
+      practice: t("mode.practiceShort"),
+      speed: t("mode.speedShort"),
+      zen: t("mode.zenShort"),
+    }[settings.mode] || t("mode.practiceShort");
     var id = diffEl.value;
     var d = NG.DIFFS[id];
-    var board = d ? d.label : ({ daily: "每日挑战", custom: "自定义", lesson: "教学", campaign: "闯关" }[id] || "");
+    var board = d ? NG.diffName(id) : (NG.diffName(id) || "");
     if (id === "lesson") {
       var i = Number(lessonEl.value) || 0;
       var ls = NG.LESSONS[i];
-      if (ls) board = "第 " + (i + 1) + " 关 · " + ls.title;
+      if (ls) board = t("title.lesson", { n: i + 1, title: lf(ls, "title") });
     }
     if (id === "campaign") {
       var ci = settings.campaignIndex | 0;
       var st = NG.CAMPAIGN[ci];
-      if (st) board = "第 " + (ci + 1) + " 关 · " + st.chapter + " " + st.title;
+      if (st) board = t("title.campaign", { n: ci + 1, chapter: chName(st.chapter), title: st.title });
     }
     return modeName + " · " + board;
   }
@@ -112,8 +127,8 @@
     var msg = $("race-msg");
     show(gate);
     function tick() {
-      if (label) label.textContent = n > 0 ? String(n) : "开始";
-      if (msg) msg.textContent = n > 0 ? "准备" : "可以开始";
+      if (label) label.textContent = n > 0 ? String(n) : t("race.go");
+      if (msg) msg.textContent = n > 0 ? t("race.ready") : t("race.set");
       if (n <= 0) {
         raceTimer = setTimeout(clearRace, 420);
         return;
@@ -134,11 +149,11 @@
     });
     Object.keys(groups).forEach(function (name) {
       var og = document.createElement("optgroup");
-      og.label = name;
+      og.label = t("opt.group." + name);
       groups[name].forEach(function (d) {
         var o = document.createElement("option");
         o.value = d.id;
-        o.textContent = d.label + " · " + d.cols + "×" + d.rows + "/" + d.mines;
+        o.textContent = NG.diffName(d.id) + " · " + d.cols + "×" + d.rows + "/" + d.mines;
         og.appendChild(o);
       });
       diffEl.appendChild(og);
@@ -146,7 +161,7 @@
     ["daily", "custom", "lesson", "campaign"].forEach(function (id) {
       var o = document.createElement("option");
       o.value = id;
-      o.textContent = { daily: "每日挑战", custom: "自定义", lesson: "教学关卡", campaign: "闯关模式" }[id];
+      o.textContent = NG.diffName(id);
       diffEl.appendChild(o);
     });
     diffEl.value = settings.diff || "easy";
@@ -178,14 +193,14 @@
       if (mines > hi) mines = hi;
       if (mines < lo && Number($("cm").value) >= lo) mines = lo;
       return {
-        kind: "custom", id: "custom", label: "自定义",
+        kind: "custom", id: "custom", label: t("diff.custom"),
         cols: cols, rows: rows, mines: mines, cell: NG.cellFor(rows, cols),
       };
     }
     if (id === "lesson") {
       var ls = NG.LESSONS[Number(lessonEl.value) || 0];
       return {
-        kind: "lesson", id: "lesson", label: ls.title,
+        kind: "lesson", id: "lesson", label: lf(ls, "title"),
         rows: ls.rows, cols: ls.cols, mines: ls.mines.length,
         cell: ls.cell || 40, lesson: ls,
       };
@@ -194,13 +209,13 @@
       var ci = NG.clamp(settings.campaignIndex | 0, 0, NG.CAMPAIGN.length - 1);
       var st = NG.CAMPAIGN[ci];
       return {
-        kind: "campaign", id: "campaign", label: st.chapter + " " + st.title,
+        kind: "campaign", id: "campaign", label: chName(st.chapter) + " " + st.title,
         rows: st.rows, cols: st.cols, mines: st.mines.length,
         cell: st.cell || 28, stage: st,
       };
     }
     var base = NG.DIFFS.medium;
-    return Object.assign({ kind: "daily", id: "daily", label: "每日" }, base);
+    return Object.assign({ kind: "daily", id: "daily", label: t("diff.dailyShort") }, base);
   }
 
   function clampNum(v, a, b) {
@@ -242,8 +257,8 @@
     else if (location.hash.indexOf("s=") >= 0 && !resetBoard.ignoreHash) setupFromHash();
     else if (isSpeed()) {
       var best = stats.best[spec.id + ":speed"];
-      say("竞速模式无提示，且不可暂停。" + (best ? "个人最佳 " + formatTime(best.ms) + "。" : ""));
-    } else say("左键翻开，右键标旗。数字周围旗数已满足时，双击或中键该格，可翻开其余邻格。点击任意格开始。");
+      say(t("speed.banner", { best: best ? t("speed.best", { time: formatTime(best.ms) }) : "" }));
+    } else say(t("howTo"));
     syncModeChrome();
     if (isSpeed() && spec.kind !== "lesson" && spec.kind !== "campaign" && !$("play").classList.contains("hidden")) armRace();
   }
@@ -281,7 +296,7 @@
     fixedStart = true;
     numbers = null;
     mines = null;
-    say("正在生成当日局面…");
+    say(t("gen.daily"));
     cellBtn(startR, startC).classList.add("start");
     generating = true;
     $("face-btn").textContent = "…";
@@ -295,13 +310,13 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!res.ok) {
-        say(res.reason || "生成失败，请更换难度或稍后重试。");
+        say(sayReason(res.reason));
         return;
       }
       numbers = res.numbers;
       mines = res.mines;
       bbbv = res.bbbv;
-      say("请从高亮格开始。初始展开 " + res.opening + " 格。");
+      say(t("gen.start", { n: res.opening }));
       paintAll();
       paintHud();
     }, 20);
@@ -309,7 +324,7 @@
 
   function setupLesson(ls) {
     var idx = Number(lessonEl.value) || 0;
-    lessonText = "第 " + (idx + 1) + " 关 · " + ls.title + "：" + ls.text;
+    lessonText = t("lesson.say", { n: idx + 1, title: lf(ls, "title"), text: lf(ls, "text") });
     var built = minesToBoard(ls.rows, ls.cols, ls.mines);
     numbers = built.numbers;
     mines = built.mines;
@@ -319,7 +334,7 @@
     seed = NG.hashSeed(ls.id);
     var start = NG.idx(startR, startC, cols);
     if (!NG.proveSolvable(rows, cols, numbers, start, ls.forceOpen || null)) {
-      say("本关局面无法求解。");
+      say(t("gen.unsolvable"));
       return;
     }
     bbbv = NG.compute3BV(rows, cols, numbers);
@@ -352,11 +367,16 @@
     seed = NG.hashSeed(stage.id);
     var start = NG.idx(startR, startC, cols);
     if (numbers[start] !== 0 || !NG.proveSolvable(rows, cols, numbers, start)) {
-      say("本关局面无法求解。");
+      say(t("gen.unsolvable"));
       return;
     }
     bbbv = NG.compute3BV(rows, cols, numbers);
-    say("第 " + (idx + 1) + " 关 · " + stage.chapter + " " + stage.title + "。" + stage.text + "请从高亮格开始。");
+    say(t("stage.say", {
+      n: idx + 1,
+      chapter: chName(stage.chapter),
+      title: stage.title,
+      line: t("stage.line", { cols: stage.cols, rows: stage.rows, n: stage.mines.length }),
+    }));
     paintAll();
     paintHud();
   }
@@ -387,7 +407,7 @@
         b.className = "cell";
         b.dataset.i = String(r * cols + c);
         b.setAttribute("role", "gridcell");
-        b.setAttribute("aria-label", "第 " + (r + 1) + " 行第 " + (c + 1) + " 列");
+        b.setAttribute("aria-label", t("cell.aria", { r: r + 1, c: c + 1 }));
         frag.appendChild(b);
       }
     }
@@ -406,7 +426,7 @@
       var safe = rows * cols - mineTotal;
       progressEl.textContent = safe ? Math.min(100, Math.round(openCount / safe * 100)) + "%" : "0%";
     }
-    timerEl.textContent = settings.mode === "zen" ? "禅" : formatTime(nowElapsed());
+    timerEl.textContent = settings.mode === "zen" ? t("zen.word") : formatTime(nowElapsed());
   }
 
   function formatTime(ms) {
@@ -448,12 +468,12 @@
       box.classList.add("hidden");
       body.classList.add("hidden");
       body.textContent = "";
-      if (btn) btn.textContent = "展开解析";
+      if (btn) btn.textContent = t("analysis.show");
       return;
     }
-    body.textContent = ls.detail || ls.text;
+    body.textContent = lf(ls, "detail") || lf(ls, "text");
     body.classList.add("hidden");
-    if (btn) btn.textContent = "展开解析";
+    if (btn) btn.textContent = t("analysis.show");
     box.classList.remove("hidden");
   }
   function hide(el) { el.classList.add("hidden"); }
@@ -570,7 +590,7 @@
 
   function beginAt(r, c) {
     if (fixedStart && (r !== startR || c !== startC)) {
-      say("请从高亮格开始。");
+      say(t("mustHighlight"));
       return;
     }
     if (numbers) {
@@ -581,7 +601,7 @@
       return;
     }
     generating = true;
-    say("正在生成局面…");
+    say(t("gen.working"));
     $("face-btn").textContent = "…";
     setTimeout(function () {
       var base = seed || ((Date.now() ^ (r * 131 + c)) >>> 0);
@@ -613,7 +633,7 @@
       generating = false;
       $("face-btn").textContent = "◎";
       if (!best) {
-        say("当前雷密度无法生成无猜局面，请减少雷数或更换起点。");
+        say(t("gen.density"));
         return;
       }
       if (!fixedStart) seed = bestSeed;
@@ -625,7 +645,7 @@
       startTick();
       flood(NG.idx(r, c, cols));
       writeHash();
-      say("已开局。初始展开 " + best.opening + " 格。");
+      say(t("gen.opened", { n: best.opening }));
       afterMove();
     }, 20);
   }
@@ -674,7 +694,7 @@
     if (open[i]) return;
     if (settings.confirm && !isSpeed() && pending !== i) {
       pending = i;
-      say("请再次点击以确认翻开。");
+      say(t("confirm.click"));
       return;
     }
     pending = -1;
@@ -685,7 +705,7 @@
     if (mines[i]) {
       if (!isSpeed() && (settings.mode === "zen" || settings.mineClick === "block")) {
         btnAt(i).classList.add("shake");
-        say("该格为雷。禅模式不因此结束对局。");
+        say(t("zen.hit"));
         undoStack.pop();
         return;
       }
@@ -786,19 +806,19 @@
   }
 
   function winSummary(ms) {
-    var parts = ["用时 " + formatTime(ms)];
+    var parts = [t("time.used", { time: formatTime(ms) })];
     if (isSpeed()) {
-      parts.push("点击 " + clickCount + " 次");
+      parts.push(t("clicks.n", { n: clickCount }));
       var prev = stats.best[diffEl.value + ":speed"];
       if (prev) {
-        if (ms < prev.ms) parts.push("已更新个人最佳");
-        else if (ms > prev.ms) parts.push("慢于个人最佳 " + formatTime(ms - prev.ms));
-        else parts.push("与个人最佳相同");
-      } else parts.push("尚无历史成绩");
+        if (ms < prev.ms) parts.push(t("best.new"));
+        else if (ms > prev.ms) parts.push(t("best.slower", { time: formatTime(ms - prev.ms) }));
+        else parts.push(t("best.tie"));
+      } else parts.push(t("best.none"));
     } else if (bbbv > 0 && ms > 0) {
       var pace = (ms / 1000) / bbbv;
-      if (pace < 2.5) parts.push("速度较快");
-      else if (pace < 5) parts.push("节奏稳定");
+      if (pace < 2.5) parts.push(t("pace.fast"));
+      else if (pace < 5) parts.push(t("pace.steady"));
     }
     return parts.join(" · ");
   }
@@ -821,33 +841,34 @@
     var lessonIdx = Number(lessonEl.value) || 0;
     var nextStage = inCampaign && stageIdx < NG.CAMPAIGN.length - 1;
     var nextLesson = inLesson && lessonIdx < NG.LESSONS.length - 1;
-    say(inCampaign || inLesson ? "本关通过。" : "通关。");
+    say(inCampaign || inLesson ? t("clear.level") : t("clear.board"));
     delete overlay.dataset.nextLesson;
     delete overlay.dataset.nextCampaign;
     if (inCampaign) {
       var stage = NG.CAMPAIGN[stageIdx];
-      $("overlay-title").textContent = "第 " + (stageIdx + 1) + " 关通过";
+      $("overlay-title").textContent = t("overlay.level", { n: stageIdx + 1 });
+      var nextStageObj = NG.CAMPAIGN[stageIdx + 1];
       var nextHint = nextStage
-        ? "下一关：" + NG.CAMPAIGN[stageIdx + 1].chapter + " " + NG.CAMPAIGN[stageIdx + 1].title
-        : "全部关卡已通过。";
-      $("overlay-msg").textContent = winSummary(ms) + "。" + (stage ? stage.text + " " : "") + nextHint;
-      $("again-btn").textContent = nextStage ? "下一关" : "再玩本关";
+        ? t("next.is", { name: chName(nextStageObj.chapter) + " " + nextStageObj.title })
+        : t("all.campaign");
+      $("overlay-msg").textContent = winSummary(ms) + " " + (stage ? t("stage.line", { cols: stage.cols, rows: stage.rows, n: stage.mines.length }) + " " : "") + nextHint;
+      $("again-btn").textContent = nextStage ? t("btn.next") : t("btn.replayStage");
       if (nextStage) overlay.dataset.nextCampaign = String(stageIdx + 1);
       delete overlay.dataset.nextDiff;
       settings.campaignBest = Math.max(settings.campaignBest | 0, stageIdx + 1);
       NG.saveSettings(settings);
     } else if (inLesson) {
-      $("overlay-title").textContent = "本关完成";
+      $("overlay-title").textContent = t("overlay.lesson");
       $("overlay-msg").textContent = nextLesson
-        ? "下一关：" + NG.LESSONS[lessonIdx + 1].title
-        : "教学关卡已全部完成。";
-      $("again-btn").textContent = nextLesson ? "下一关" : "再练本关";
+        ? t("next.lesson", { title: lf(NG.LESSONS[lessonIdx + 1], "title") })
+        : t("all.lessons");
+      $("again-btn").textContent = nextLesson ? t("btn.next") : t("btn.replayLesson");
       if (nextLesson) overlay.dataset.nextLesson = String(lessonIdx + 1);
       delete overlay.dataset.nextDiff;
     } else {
-      $("overlay-title").textContent = "胜利";
-      $("overlay-msg").textContent = winSummary(ms) + "。";
-      $("again-btn").textContent = "再来一局";
+      $("overlay-title").textContent = t("win.title");
+      $("overlay-msg").textContent = winSummary(ms) + ".";
+      $("again-btn").textContent = t("again");
     }
     overlay.classList.remove("lose-fx");
     if (motionOn()) {
@@ -868,7 +889,7 @@
       NG.saveStats(stats);
       var next = NG.nextDiff(diffEl.value, 1);
       if (stats.streak >= 3 && next) {
-        say("已连胜 " + stats.streak + " 局，下一局将升至「" + NG.DIFFS[next].label + "」。");
+        say(t("streak.up", { n: stats.streak, label: NG.diffName(next) }));
         overlay.dataset.nextDiff = next;
       } else {
         delete overlay.dataset.nextDiff;
@@ -902,10 +923,10 @@
       });
     }
     $("face-btn").textContent = "✧";
-    say("已踩中地雷。");
-    $("overlay-title").textContent = "本局失败";
-    $("overlay-msg").textContent = isSpeed() ? "本局结束。再次开始将重新倒计时。" : "可重新开始。";
-    $("again-btn").textContent = "再来一局";
+    say(t("hit"));
+    $("overlay-title").textContent = t("lose.title");
+    $("overlay-msg").textContent = isSpeed() ? t("lose.speed") : t("lose.retry");
+    $("again-btn").textContent = t("again");
     delete overlay.dataset.nextLesson;
     overlay.classList.add("lose-fx");
     show(overlay);
@@ -915,7 +936,7 @@
     if (!isSpeed()) {
       var easier = NG.nextDiff(diffEl.value, -1);
       if (stats.lossStreak >= 3 && easier) {
-        say("连续未完成，下一局将降至「" + NG.DIFFS[easier].label + "」。");
+        say(t("streak.down", { label: NG.diffName(easier) }));
         overlay.dataset.nextDiff = easier;
       } else {
         delete overlay.dataset.nextDiff;
@@ -938,10 +959,10 @@
       startR: startR,
       startC: startC,
       bbbv: bbbv,
-      name: (settings.cloud && settings.cloud.displayName) || "匿名",
+      name: (settings.cloud && settings.cloud.displayName) || t("anon"),
     };
     NG.submitDaily(settings, entry).then(function (res) {
-      say("已提交今日成绩" + (res.rank ? " · 第 " + res.rank + " 名" : "") + "。");
+      say(t("submit.ok", { rank: res.rank ? t("submit.rank", { n: res.rank }) : "" }));
     }).catch(function () {
       /* 榜挂了不影响通关 */
     });
@@ -1028,23 +1049,26 @@
   }
 
   function hint() {
-    if (!assistOn()) { say("竞速模式不提供提示。"); return; }
+    if (!assistOn()) { say(t("hint.speed")); return; }
     var info = analyze();
-    if (!info) { say("请先翻开起始格。"); return; }
-    if (info.contradiction) { say("旗标与数字矛盾，可能存在误标。"); return; }
+    if (!info) { say(t("hint.first")); return; }
+    if (info.contradiction) { say(t("hint.bad")); return; }
     var chain = buildChain(info, 3);
     if (!chain.length) {
-      say(info.guess.length ? "尚有 " + info.guess.length + " 格无法唯一确定。" : "已无未知格。");
+      say(info.guess.length ? t("hint.left", { n: info.guess.length }) : t("hint.done"));
       return;
     }
     chain.forEach(function (pick) {
       btnAt(pick.i).classList.add(pick.mine ? "hint-mine" : "hint-safe");
     });
     var first = chain[0];
-    var head = "第 " + (((first.i / cols) | 0) + 1) + " 行第 " + ((first.i % cols) + 1) + " 列" + (first.mine ? "是雷。" : "安全。") + first.why;
-    if (chain.length > 1) {
-      head += "还可继续确定 " + (chain.length - 1) + " 步。";
-    }
+    var head = t("hint.where", {
+      r: ((first.i / cols) | 0) + 1,
+      c: (first.i % cols) + 1,
+      what: first.mine ? t("hint.mine") : t("hint.safe"),
+      why: first.why,
+    });
+    if (chain.length > 1) head += t("hint.more", { n: chain.length - 1 });
     say(head);
   }
 
@@ -1090,12 +1114,12 @@
     info.mines.forEach(function (i) {
       var e = explained[i];
       if (e && e.mine) consider(i, true, e.score, e.why);
-      else consider(i, true, 15, "把它换成安全格会和某个数字矛盾。");
+      else consider(i, true, 15, t("why.swap"));
     });
     info.safe.forEach(function (i) {
       var e = explained[i];
       if (e && !e.mine) consider(i, false, e.score, e.why);
-      else consider(i, false, 15, "现有数字把这一格排除出了雷的位置。");
+      else consider(i, false, 15, t("why.out"));
     });
     return best;
   }
@@ -1122,9 +1146,9 @@
       if (!cells.length || need < 0 || need > cells.length) continue;
       cons.push({ i: i, cells: cells, need: need, num: numbers[i] });
       if (need === 0) {
-        for (var a = 0; a < cells.length; a++) add(cells[a], false, 100, "旁边的 " + numbers[i] + " 已经标满，其余都安全。");
+        for (var a = 0; a < cells.length; a++) add(cells[a], false, 100, t("why.full", { n: numbers[i] }));
       } else if (need === cells.length) {
-        for (var b = 0; b < cells.length; b++) add(cells[b], true, 100, "旁边的 " + numbers[i] + " 还差 " + need + " 颗雷，未开格正好这么多。");
+        for (var b = 0; b < cells.length; b++) add(cells[b], true, 100, t("why.exact", { n: numbers[i], need: need }));
       }
     }
     for (var a1 = 0; a1 < cons.length; a1++) {
@@ -1157,9 +1181,9 @@
   }
 
   function subsetWhy(small, big, extraCount, isMine) {
-    var one = extraCount === 1 ? "这一格" : "这几格";
-    if (isMine) return "数字 " + big.num + " 比数字 " + small.num + " 多看见" + one + "，多出来的正好是雷。";
-    return "数字 " + big.num + " 比数字 " + small.num + " 多看见" + one + "，雷数却没有增加，所以安全。";
+    var one = extraCount === 1 ? t("why.one") : t("why.many");
+    if (isMine) return t("why.subMine", { big: big.num, small: small.num, extra: one });
+    return t("why.subSafe", { big: big.num, small: small.num, extra: one });
   }
 
   function patternWhy(a, b, target, isMine, openArr) {
@@ -1189,14 +1213,14 @@
     }
     var nums = [];
     for (var n = 0; n < cells.length; n++) nums.push(numbers[cells[n]]);
-    var axis = horizontal ? "排" : "列";
+    var axis = horizontal ? t("axis.row") : t("axis.col");
     var w4 = windowAt(nums, [1, 2, 2, 1]);
     if (w4 >= 0 && patternSide(cells[w4], 4, target, horizontal, isMine, "1221")) {
-      return "这一" + axis + "是 1-2-2-1。" + (isMine ? "两个 2 正对的格子是雷。" : "两端正对的格子安全。");
+      return t("why.1221", { axis: axis, rest: isMine ? t("why.1221m") : t("why.1221s") });
     }
     var w3 = windowAt(nums, [1, 2, 1]);
     if (w3 >= 0 && patternSide(cells[w3], 3, target, horizontal, isMine, "121")) {
-      return "这一" + axis + "是 1-2-1。" + (isMine ? "两侧是雷。" : "正中间安全。");
+      return t("why.121", { axis: axis, rest: isMine ? t("why.121m") : t("why.121s") });
     }
     return "";
   }
@@ -1223,13 +1247,13 @@
   }
 
   function doAnalyze() {
-    if (isSpeed()) { say("竞速模式不提供分析。"); return; }
+    if (isSpeed()) { say(t("analyze.speed")); return; }
     var info = analyze();
-    if (!info) { say("请先翻开起始格。"); return; }
+    if (!info) { say(t("hint.first")); return; }
     if (!info.safe.length && !info.mines.length && openCount + mineTotal < rows * cols) {
-      say("尚不能唯一确定的格子：" + info.guess.length + "。");
+      say(t("analyze.stuck", { n: info.guess.length }));
     } else {
-      say("可翻开 " + info.safe.length + " · 可标旗 " + info.mines.length + " · 未定 " + info.guess.length + "。");
+      say(t("analyze.sum", { safe: info.safe.length, mines: info.mines.length, guess: info.guess.length }));
     }
   }
 
@@ -1272,28 +1296,29 @@
   function settingsHtml() {
     var cloud = settings.cloud || NG.defaultCloudSettings();
     return '<div class="settings-grid">' +
-      row("主题", '<select id="set-theme"><option value="soft">静蓝</option><option value="classic">经典</option><option value="dark">深色</option><option value="pixel">像素</option></select>') +
-      row("配色", '<select id="set-palette"><option value="classic">经典数字色</option><option value="cb">色盲友好</option></select>') +
-      row("音效", check("set-sound", settings.sound)) +
-      row("动画", check("set-motion", settings.motion !== false)) +
-      row("确认翻开", check("set-confirm", settings.confirm)) +
-      row("标出错旗", check("set-errors", settings.errors)) +
-      row("无旗模式", check("set-noflag", settings.noFlag)) +
-      row("大字号", check("set-large", settings.largeText)) +
-      row("辅助", '<select id="set-assist"><option value="off">关闭</option><option value="hint">仅提示按钮</option><option value="safe">标出安全格</option><option value="prob">雷概率</option></select>') +
-      row("踩雷", '<select id="set-mine"><option value="lose">结束对局</option><option value="block">阻止翻开，不结束</option></select>') +
-      row("格子", '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
+      row(t("set.lang"), '<select id="set-lang"></select>') +
+      row(t("set.theme"), '<select id="set-theme"><option value="soft">' + t("theme.soft") + '</option><option value="classic">' + t("theme.classic") + '</option><option value="dark">' + t("theme.dark") + '</option><option value="pixel">' + t("theme.pixel") + '</option></select>') +
+      row(t("set.palette"), '<select id="set-palette"><option value="classic">' + t("pal.classic") + '</option><option value="cb">' + t("pal.cb") + '</option></select>') +
+      row(t("set.sound"), check("set-sound", settings.sound)) +
+      row(t("set.motion"), check("set-motion", settings.motion !== false)) +
+      row(t("set.confirm"), check("set-confirm", settings.confirm)) +
+      row(t("set.errors"), check("set-errors", settings.errors)) +
+      row(t("set.noflag"), check("set-noflag", settings.noFlag)) +
+      row(t("set.large"), check("set-large", settings.largeText)) +
+      row(t("set.assist"), '<select id="set-assist"><option value="off">' + t("assist.off") + '</option><option value="hint">' + t("assist.hint") + '</option><option value="safe">' + t("assist.safe") + '</option><option value="prob">' + t("assist.prob") + '</option></select>') +
+      row(t("set.mine"), '<select id="set-mine"><option value="lose">' + t("mine.lose") + '</option><option value="block">' + t("mine.block") + '</option></select>') +
+      row(t("set.cell"), '<input id="set-cell" type="range" min="18" max="48" value="' + cellSize + '">') +
       '<hr class="soft-hr" />' +
-      '<p class="hint">可选。填写端点后可进行云备份与每日榜。不填写亦可正常游戏。</p>' +
-      row("同步端点", '<input id="set-api" type="url" placeholder="https://api.example.com" value="' + escAttr(cloud.apiBase) + '">') +
-      row("同步密钥", '<input id="set-key" type="password" autocomplete="off" placeholder="至少 8 位" value="' + escAttr(cloud.syncKey) + '">') +
-      row("榜上昵称", '<input id="set-name" type="text" maxlength="24" value="' + escAttr(cloud.displayName) + '">') +
-      row("通关后备份", check("set-autobackup", cloud.autoBackup)) +
+      '<p class="hint">' + t("cloud.note") + '</p>' +
+      row(t("cloud.api"), '<input id="set-api" type="url" placeholder="https://api.example.com" value="' + escAttr(cloud.apiBase) + '">') +
+      row(t("cloud.key"), '<input id="set-key" type="password" autocomplete="off" placeholder="' + escAttr(t("cloud.keyPh")) + '" value="' + escAttr(cloud.syncKey) + '">') +
+      row(t("cloud.name"), '<input id="set-name" type="text" maxlength="24" value="' + escAttr(cloud.displayName) + '">') +
+      row(t("cloud.auto"), check("set-autobackup", cloud.autoBackup)) +
       '<div class="tools">' +
-        '<button type="button" class="text-btn" id="cloud-push">上传备份</button>' +
-        '<button type="button" class="text-btn" id="cloud-pull">拉取备份</button>' +
-        '<button type="button" class="text-btn" id="export-btn">导出进度</button>' +
-        '<button type="button" class="text-btn" id="import-btn">导入进度</button>' +
+        '<button type="button" class="text-btn" id="cloud-push">' + t("cloud.push") + '</button>' +
+        '<button type="button" class="text-btn" id="cloud-pull">' + t("cloud.pull") + '</button>' +
+        '<button type="button" class="text-btn" id="export-btn">' + t("cloud.export") + '</button>' +
+        '<button type="button" class="text-btn" id="import-btn">' + t("cloud.import") + '</button>' +
       '</div>' +
       '<p class="hint" id="cloud-status"></p>' +
       '</div>';
@@ -1305,6 +1330,8 @@
   function check(id, on) { return '<input type="checkbox" id="' + id + '"' + (on ? " checked" : "") + ">"; }
 
   function bindSettings() {
+    NG.fillLangSelect($("set-lang"), settings.lang || "en");
+    $("set-lang").onchange = function () { chooseLang(this.value); };
     $("set-theme").value = settings.theme;
     $("set-palette").value = settings.palette;
     $("set-assist").value = settings.assist;
@@ -1340,48 +1367,48 @@
     $("cloud-push").onclick = function () {
       saveCloudFields();
       if (!(settings.cloud.syncKey || "").length || settings.cloud.syncKey.length < 8) {
-        $("cloud-status").textContent = "请先填写至少 8 位同步密钥。";
+        $("cloud-status").textContent = t("cloud.needKey");
         return;
       }
       if (!NG.cloudAvailable(settings)) {
-        $("cloud-status").textContent = "未配置同步端点。";
+        $("cloud-status").textContent = t("cloud.noApi");
         return;
       }
-      $("cloud-status").textContent = "正在上传…";
+      $("cloud-status").textContent = t("cloud.uploading");
       NG.pushBackup(settings, stats).then(function (res) {
-        $("cloud-status").textContent = "已上传 · " + new Date(res.at || Date.now()).toLocaleString();
+        $("cloud-status").textContent = t("cloud.uploaded", { time: new Date(res.at || Date.now()).toLocaleString() });
       }).catch(function (e) {
-        $("cloud-status").textContent = "上传失败：" + (e.message || e);
+        $("cloud-status").textContent = t("cloud.upFail", { msg: e.message || e });
       });
     };
     $("cloud-pull").onclick = function () {
       saveCloudFields();
       if (!(settings.cloud.syncKey || "").length || settings.cloud.syncKey.length < 8) {
-        $("cloud-status").textContent = "请先填写同步密钥。";
+        $("cloud-status").textContent = t("cloud.needKeyShort");
         return;
       }
       if (!NG.cloudAvailable(settings)) {
-        $("cloud-status").textContent = "未配置同步端点。";
+        $("cloud-status").textContent = t("cloud.noApi");
         return;
       }
-      $("cloud-status").textContent = "正在拉取…";
+      $("cloud-status").textContent = t("cloud.pulling");
       NG.pullBackup(settings).then(function (remote) {
         var local = { settings: settings, stats: stats, at: Date.now() };
         var choice = "newer";
         if (remote.at && Math.abs((remote.at || 0) - local.at) > 1000) {
-          var msg = "云端 " + new Date(remote.at).toLocaleString() + "\n确定=用较新的，取消=保留本地。";
+          var msg = t("cloud.conflict", { time: new Date(remote.at).toLocaleString() });
           if (!window.confirm(msg)) choice = "local";
           else {
-            var useRemote = window.confirm("确定=强制用云端；取消=用较新的一方。");
+            var useRemote = window.confirm(t("cloud.force"));
             choice = useRemote ? "remote" : "newer";
           }
         }
         var merged = NG.mergeBackupConflict(local, remote, choice);
         applyCloudPayload(merged);
-        $("cloud-status").textContent = "已同步。";
-        say("已同步云备份。");
+        $("cloud-status").textContent = t("cloud.synced");
+        say(t("cloud.syncedSay"));
       }).catch(function (e) {
-        $("cloud-status").textContent = "拉取失败：" + (e.message || e);
+        $("cloud-status").textContent = t("cloud.pullFail", { msg: e.message || e });
       });
     };
     $("export-btn").onclick = function () {
@@ -1402,7 +1429,7 @@
         reader.onload = function () {
           var data = JSON.parse(String(reader.result));
           applyCloudPayload(data);
-          say("进度已导入。");
+          say(t("imported"));
           hide(modal);
         };
         reader.readAsText(file);
@@ -1424,42 +1451,43 @@
     });
     var diffRows = Object.keys(byDiff).map(function (k) {
       var d = byDiff[k];
-      var label = (NG.DIFFS[k] && NG.DIFFS[k].label) || ({ lesson: "教学", campaign: "闯关", daily: "每日", custom: "自定义" }[k] || k);
+      var label = NG.DIFFS[k] ? NG.diffName(k) : (NG.diffName(k) || k);
       var wr = d.n ? Math.round(d.w / d.n * 100) : 0;
       var am = d.w ? formatTime(Math.round(d.ms / d.w)) : "-";
-      return "<li>" + label + " 胜率 " + wr + "% · 平均 " + am + "</li>";
-    }).join("") || "<li>尚无对局记录</li>";
+      return "<li>" + t("stats.row", { label: label, wr: wr, avg: am }) + "</li>";
+    }).join("") || "<li>" + t("stats.none") + "</li>";
     var bestRows = Object.keys(stats.best).map(function (k) {
       var b = stats.best[k];
-      var label = (NG.DIFFS[k.split(":")[0]] && NG.DIFFS[k.split(":")[0]].label) || k;
-      if (k.indexOf("campaign") === 0) label = "闯关";
-      else if (k.indexOf("lesson") === 0) label = "教学";
-      return "<li>" + label + " 最佳 " + formatTime(b.ms) + "</li>";
-    }).join("") || "<li>尚无最佳成绩</li>";
+      var base = k.split(":")[0];
+      var label = NG.DIFFS[base] ? NG.diffName(base) : base;
+      if (k.indexOf("campaign") === 0) label = t("diff.campShort");
+      else if (k.indexOf("lesson") === 0) label = t("diff.teachShort");
+      return "<li>" + t("best.row", { label: label, time: formatTime(b.ms) }) + "</li>";
+    }).join("") || "<li>" + t("best.empty") + "</li>";
     var day = dailyKey();
     var dayShort = day.split("-").slice(0, 3).join("-");
     var dailyBest = stats.daily && stats.daily[day];
     var dailyLine = dailyBest
-      ? "<p>今日本地最佳 " + formatTime(dailyBest.ms) + "</p>"
-      : "<p>今日挑战尚无本地成绩。</p>";
+      ? "<p>" + t("daily.best", { time: formatTime(dailyBest.ms) }) + "</p>"
+      : "<p>" + t("daily.none") + "</p>";
     var campaignLine = (settings.campaignBest | 0) > 0
-      ? "<p>闯关进度：已通过 " + (settings.campaignBest | 0) + " / " + NG.CAMPAIGN.length + " 关</p>"
-      : "<p>闯关进度：尚未通过</p>";
+      ? "<p>" + t("camp.prog", { n: settings.campaignBest | 0, total: NG.CAMPAIGN.length }) + "</p>"
+      : "<p>" + t("camp.noneProg") + "</p>";
     var recent = stats.games.slice(-16);
     var max = 1;
     recent.forEach(function (g) { if (g.won && g.ms > max) max = g.ms; });
     var bars = recent.map(function (g) {
       var h = g.won ? Math.max(8, Math.round(g.ms / max * 100)) : 8;
-      return '<i style="height:' + h + '%;opacity:' + (g.won ? 1 : 0.35) + '" title="' + (g.won ? formatTime(g.ms) : "失败") + '"></i>';
+      return '<i style="height:' + h + '%;opacity:' + (g.won ? 1 : 0.35) + '" title="' + (g.won ? formatTime(g.ms) : t("bar.fail")) + '"></i>';
     }).join("");
     return '<div class="stats-list">' +
-      '<p>对局 ' + stats.games.length + ' · 胜率 ' + rate + '% · 胜场平均 ' + (avg ? formatTime(avg) : "-") + ' · 连胜 ' + (stats.streak || 0) + '</p>' +
+      "<p>" + t("stats.line", { games: stats.games.length, rate: rate, avg: avg ? formatTime(avg) : "-", streak: stats.streak || 0 }) + "</p>" +
       campaignLine +
       dailyLine +
-      '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">刷新今日榜</button></div>' +
-      '<ol id="daily-board" class="daily-board"><li class="hint">打开云端后可看公开榜。</li></ol>' +
+      '<div class="tools"><button type="button" class="text-btn" id="load-daily-board">' + t("stats.refresh") + '</button></div>' +
+      '<ol id="daily-board" class="daily-board"><li class="hint">' + t("stats.cloudHint") + '</li></ol>' +
       '<ul>' + diffRows + '</ul><ul>' + bestRows + '</ul><div class="bars">' + bars + '</div>' +
-      '<p class="hint">柱高表示最近用时，浅色表示失败。</p></div>';
+      '<p class="hint">' + t("stats.barHint") + '</p></div>';
   }
 
   function bindStats() {
@@ -1471,26 +1499,26 @@
       if (!el) return;
       if (note) { el.innerHTML = "<li class=\"hint\">" + note + "</li>"; return; }
       if (!entries || !entries.length) {
-        el.innerHTML = "<li class=\"hint\">今日榜暂无记录。</li>";
+        el.innerHTML = "<li class=\"hint\">" + t("board.empty") + "</li>";
         return;
       }
       el.innerHTML = entries.map(function (e, i) {
-        return "<li>" + (i + 1) + ". " + (e.name || "匿名") + " · " + formatTime(e.ms) +
+        return "<li>" + (i + 1) + ". " + (e.name || t("anon")) + " · " + formatTime(e.ms) +
           (e.mode ? " · " + e.mode : "") + "</li>";
       }).join("");
     }
     function load() {
-      renderBoard(null, "加载中…");
+      renderBoard(null, t("board.loading"));
       if (!NG.cloudAvailable(settings)) {
         var local = stats.daily && stats.daily[dailyKey()];
-        if (local) renderBoard([{ name: "我", ms: local.ms, mode: local.mode }]);
-        else renderBoard(null, "未启用云端，仅显示本地成绩。");
+        if (local) renderBoard([{ name: t("me"), ms: local.ms, mode: local.mode }]);
+        else renderBoard(null, t("board.localOnly"));
         return;
       }
       NG.fetchDailyBoard(settings, dayShort, "daily").then(function (data) {
         renderBoard(data.entries || []);
       }).catch(function () {
-        renderBoard(null, "排行榜暂不可用。");
+        renderBoard(null, t("board.down"));
       });
     }
     btn.onclick = load;
@@ -1499,7 +1527,7 @@
 
   function shareHtml() {
     var link = location.href;
-    return '<div class="stats-list"><p>把链接发给朋友，就是同一局。</p><input id="share-link" readonly value="' + link.replace(/"/g, "&quot;") + '" style="width:100%"><div class="tools"><button type="button" class="text-btn" id="copy-link">复制链接</button><button type="button" class="text-btn" id="save-png">下载棋盘图</button></div></div>';
+    return '<div class="stats-list"><p>' + t("share.note") + '</p><input id="share-link" readonly value="' + link.replace(/"/g, "&quot;") + '" style="width:100%"><div class="tools"><button type="button" class="text-btn" id="copy-link">' + t("share.copy") + '</button><button type="button" class="text-btn" id="save-png">' + t("share.png") + '</button></div></div>';
   }
 
   function drawPng() {
@@ -1555,8 +1583,8 @@
     if (!bar) return;
     bar.classList.remove("hidden");
     var total = replay.actions.length || (lastRecord && lastRecord.actions.length) || 0;
-    $("replay-status").textContent = "复盘 " + Math.min(replay.index, total) + " / " + total;
-    $("rp-toggle").textContent = replay.on && !replay.paused ? "暂停" : "播放";
+    $("replay-status").textContent = t("replay.status", { i: Math.min(replay.index, total), total: total });
+    $("rp-toggle").textContent = replay.on && !replay.paused ? t("replay.pause") : t("replay.play");
     bar.querySelectorAll("[data-rate]").forEach(function (b) {
       b.classList.toggle("active", Number(b.dataset.rate) === replay.rate);
     });
@@ -1610,7 +1638,7 @@
     var act = replay.actions[replay.index++];
     if (!act) {
       replay.on = false;
-      say("复盘结束。");
+      say(t("replay.end"));
       updateReplayBar();
       return false;
     }
@@ -1621,7 +1649,7 @@
     if (replay.index >= replay.actions.length) {
       replay.on = false;
       replay.paused = false;
-      say("复盘结束。");
+      say(t("replay.end"));
     }
     updateReplayBar();
     return replay.on;
@@ -1635,11 +1663,11 @@
       replay.on = true;
       replay.paused = false;
       scheduleReplay();
-      say("复盘播放中。");
+      say(t("replay.playing"));
     } else {
       replay.paused = true;
       stopReplayClock();
-      say("复盘已暂停。");
+      say(t("replay.pausedSay"));
     }
     updateReplayBar();
   }
@@ -1798,7 +1826,7 @@
       NG.saveSettings(settings);
       delete overlay.dataset.nextDiff;
     }
-    $("again-btn").textContent = "再来一局";
+    $("again-btn").textContent = t("again");
     resetBoard.ignoreHash = true;
     location.hash = "";
     resetBoard.ignoreHash = false;
@@ -1828,11 +1856,11 @@
     var body = $("lesson-read-body");
     if (!body) return;
     body.classList.toggle("hidden");
-    this.textContent = body.classList.contains("hidden") ? "展开解析" : "收起解析";
+    this.textContent = body.classList.contains("hidden") ? t("analysis.show") : t("analysis.hide");
   };
   $("flag-mode").onclick = function () {
     flagMode = !flagMode;
-    this.textContent = flagMode ? "标旗" : "翻开";
+    this.textContent = flagMode ? t("act.flag") : t("act.open");
     this.classList.toggle("active", flagMode);
   };
   $("apply-custom").onclick = function () {
@@ -1844,34 +1872,36 @@
     $("cm").value = String(spec.mines);
     var minSafe = 1 + 8;
     if (spec.mines > spec.rows * spec.cols - minSafe) {
-      say("雷数过多，请减少。");
+      say(t("tooMany"));
       return;
     }
     if (spec.rows * spec.cols > 1200) {
-      say("已调整为 " + spec.cols + "×" + spec.rows + " / " + spec.mines + " 雷。");
+      say(t("resized", { cols: spec.cols, rows: spec.rows, mines: spec.mines }));
     }
     NG.saveSettings(settings);
     screenFrom = "boards";
     enterPlay();
   };
-  $("open-settings").onclick = function () { openModal("设置", settingsHtml()); bindSettings(); };
-  $("open-stats").onclick = function () { openModal("统计", statsHtml()); bindStats(); };
+  $("open-settings").onclick = function () { modalKind = "settings"; openModal(t("modal.settings"), settingsHtml()); bindSettings(); };
+  $("open-stats").onclick = function () { modalKind = "stats"; openModal(t("modal.stats"), statsHtml()); bindStats(); };
   $("open-share").onclick = function () {
     if (started) writeHash();
-    openModal("分享", shareHtml());
+    modalKind = "share";
+    openModal(t("modal.share"), shareHtml());
     $("copy-link").onclick = function () {
-      navigator.clipboard.writeText($("share-link").value).then(function () { say("链接已复制。"); });
+      navigator.clipboard.writeText($("share-link").value).then(function () { say(t("copied")); });
     };
     $("save-png").onclick = drawPng;
   };
   $("open-replay").onclick = function () {
     if (!lastRecord || !lastRecord.actions || !lastRecord.actions.length) {
-      openModal("复盘", "<p>需先完成或结束一局，方可复盘。</p>");
+      modalKind = "replay";
+      openModal(t("modal.replay"), "<p>" + t("replay.need") + "</p>");
       return;
     }
     hide(modal);
     prepareReplay();
-    say("可播放、暂停或调整倍速。1 倍速下每步约一秒。");
+    say(t("replay.help"));
   };
   $("rp-toggle").onclick = toggleReplayPlay;
   $("rp-step").onclick = function () {
@@ -1886,7 +1916,7 @@
   };
   $("rp-exit").onclick = function () {
     stopReplay();
-    say("已退出复盘。");
+    say(t("replay.left"));
   };
   document.querySelectorAll("#replay-bar [data-rate]").forEach(function (b) {
     b.onclick = function () {
@@ -1895,8 +1925,8 @@
       updateReplayBar();
     };
   });
-  $("modal-close").onclick = function () { hide(modal); };
-  modal.addEventListener("click", function (e) { if (e.target === modal) hide(modal); });
+  $("modal-close").onclick = function () { modalKind = ""; hide(modal); };
+  modal.addEventListener("click", function (e) { if (e.target === modal) { modalKind = ""; hide(modal); } });
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(function () {});
@@ -1926,33 +1956,33 @@
   function showHome() {
     stopPlaySurface();
     showOnly("home");
-    setHero("请选择模式");
+    setHero(t("hero.choose"));
   }
 
   function boardPageSpec() {
     var pages = {
       practice: {
-        note: "建议先完成雷数较少的盘面，再进行经典雷数。",
+        note: t("note.practice"),
         groups: [
-          { title: "较低密度", ids: ["ngEasy", "ngMedium", "ngHard"] },
-          { title: "经典雷数", ids: ["easy", "medium", "hard"] },
+          { title: t("grp.density"), ids: ["ngEasy", "ngMedium", "ngHard"] },
+          { title: t("grp.classic"), ids: ["easy", "medium", "hard"] },
         ],
         daily: true,
         custom: true,
       },
       speed: {
-        note: "仅记录经典三档与每日挑战，便于比较用时。",
+        note: t("note.speed"),
         groups: [
-          { title: "标准计时", ids: ["easy", "medium", "hard"] },
+          { title: t("grp.timed"), ids: ["easy", "medium", "hard"] },
         ],
         daily: true,
         custom: false,
       },
       zen: {
-        note: "不计时，踩雷不结束对局。每日挑战位于竞速模式。",
+        note: t("note.zen"),
         groups: [
-          { title: "经典规格", ids: ["easy", "medium", "hard"] },
-          { title: "较低密度", ids: ["ngEasy", "ngMedium", "ngHard"] },
+          { title: t("grp.specs"), ids: ["easy", "medium", "hard"] },
+          { title: t("grp.density"), ids: ["ngEasy", "ngMedium", "ngHard"] },
         ],
         daily: false,
         custom: true,
@@ -1982,7 +2012,7 @@
       group.ids.forEach(function (id) {
         var d = NG.DIFFS[id];
         if (!d) return;
-        addBoardCard(box, d.label, d.cols + "×" + d.rows + " · " + d.mines + " 雷", function () {
+        addBoardCard(box, NG.diffName(id), t("card.mines", { cols: d.cols, rows: d.rows, n: d.mines }), function () {
           chooseDiff(id);
         });
       });
@@ -1990,14 +2020,14 @@
     if (spec.daily || spec.custom) {
       var extra = document.createElement("p");
       extra.className = "home-kicker chapter-break";
-      extra.textContent = spec.daily && spec.custom ? "其他" : (spec.daily ? "每日" : "自定义");
+      extra.textContent = spec.daily && spec.custom ? t("grp.other") : (spec.daily ? t("grp.daily") : t("grp.custom"));
       box.appendChild(extra);
     }
     if (spec.daily) {
-      addBoardCard(box, "每日挑战", "当日为同一中级盘面", function () { chooseDiff("daily"); });
+      addBoardCard(box, t("daily.card"), t("daily.sub"), function () { chooseDiff("daily"); });
     }
     if (spec.custom) {
-      addBoardCard(box, "自定义", "自行设定宽度、高度与雷数", function () {
+      addBoardCard(box, t("custom.card"), t("custom.sub"), function () {
         var form = $("custom");
         form.classList.remove("hidden");
         form.scrollIntoView({ block: "nearest" });
@@ -2008,13 +2038,13 @@
   }
 
   function showBoards() {
-    var names = { practice: "练习模式", speed: "竞速模式", zen: "禅模式" };
+    var names = { practice: t("page.practice"), speed: t("page.speed"), zen: t("page.zen") };
     var spec = boardPageSpec();
-    $("boards-title").textContent = (names[settings.mode] || "选择盘面") + " · 选择盘面";
+    $("boards-title").textContent = (names[settings.mode] || t("page.pick")) + " · " + t("page.pick");
     $("boards-note").textContent = spec.note;
     paintBoards();
     showOnly("page-boards");
-    setHero(names[settings.mode] || "选择盘面");
+    setHero(names[settings.mode] || t("page.pick"));
   }
 
   function nextCampaignIndex() {
@@ -2030,11 +2060,11 @@
     var next = nextCampaignIndex();
     var doneAll = cleared >= total;
     $("campaign-progress").textContent = doneAll
-      ? total + " 关均已通过，可重玩任意一关。"
-      : "已通过 " + cleared + " / " + total + " 关";
+      ? t("camp.all", { n: total })
+      : t("camp.progress", { n: cleared, total: total });
     $("campaign-continue").textContent = doneAll
-      ? "重玩第 " + (next + 1) + " 关"
-      : (cleared ? "继续第 " + (next + 1) + " 关" : "从第 1 关开始");
+      ? t("camp.replay", { n: next + 1 })
+      : (cleared ? t("camp.cont", { n: next + 1 }) : t("camp.start"));
     var box = $("campaign-cards");
     box.innerHTML = "";
     var last = "";
@@ -2043,15 +2073,15 @@
         last = st.chapter;
         var h = document.createElement("p");
         h.className = "home-kicker chapter-break";
-        h.textContent = st.chapter;
+        h.textContent = chName(st.chapter);
         box.appendChild(h);
       }
       var card = document.createElement("button");
       card.type = "button";
       card.className = "pick-card" + (i < cleared ? " done" : "") + (i === next && !doneAll ? " current" : "");
-      var mark = i < cleared ? "已通过" : (i === next ? "当前" : "未通过");
+      var mark = i < cleared ? t("mark.done") : (i === next ? t("mark.now") : t("mark.todo"));
       card.innerHTML = "<strong>" + (i + 1) + ". " + st.title + "</strong><span>" +
-        mark + " · " + st.mines.length + " 雷</span>";
+        mark + " · " + t("nMines", { n: st.mines.length }) + "</span>";
       card.onclick = function () { chooseCampaign(i); };
       box.appendChild(card);
     });
@@ -2063,7 +2093,7 @@
     applyChrome();
     paintCampaign();
     showOnly("page-campaign");
-    setHero("闯关模式");
+    setHero(t("mode.campaign"));
   }
 
   function paintTeach() {
@@ -2075,7 +2105,7 @@
         last = ls.chapter;
         var h = document.createElement("p");
         h.className = "home-kicker chapter-break";
-        h.textContent = ls.chapter;
+        h.textContent = chName(ls.chapter);
         box.appendChild(h);
       }
       var card = document.createElement("div");
@@ -2083,18 +2113,18 @@
       var openBtn = document.createElement("button");
       openBtn.type = "button";
       openBtn.className = "teach-open";
-      openBtn.innerHTML = "<strong>" + (i + 1) + ". " + ls.title + "</strong><span>" + ls.text + "</span>";
+      openBtn.innerHTML = "<strong>" + (i + 1) + ". " + lf(ls, "title") + "</strong><span>" + lf(ls, "text") + "</span>";
       openBtn.onclick = function () { chooseLesson(i, "teach"); };
       var more = document.createElement("button");
       more.type = "button";
       more.className = "text-btn";
-      more.textContent = "解析";
+      more.textContent = t("teach.more");
       var detail = document.createElement("p");
       detail.className = "teach-detail hidden";
-      detail.textContent = ls.detail || ls.text;
+      detail.textContent = lf(ls, "detail") || lf(ls, "text");
       more.onclick = function () {
         detail.classList.toggle("hidden");
-        more.textContent = detail.classList.contains("hidden") ? "解析" : "收起";
+        more.textContent = detail.classList.contains("hidden") ? t("teach.more") : t("teach.less");
       };
       card.appendChild(openBtn);
       card.appendChild(more);
@@ -2107,8 +2137,9 @@
     settings.mode = "practice";
     NG.saveSettings(settings);
     applyChrome();
+    paintTeach();
     showOnly("page-teach");
-    setHero("教学关卡");
+    setHero(t("mode.teach"));
   }
 
   function leavePlay() {
@@ -2175,7 +2206,60 @@
     $("campaign-continue").onclick = function () { chooseCampaign(nextCampaignIndex()); };
   }
 
+  function chooseLang(id) {
+    if (!id || id === NG.lang) {
+      settings.lang = id || settings.lang || "en";
+      return;
+    }
+    settings.lang = id;
+    NG.saveSettings(settings);
+    NG.setLang(id);
+  }
+
+  function refreshLang() {
+    NG.fillLangSelect($("lang-select"), NG.lang);
+    syncModeChrome();
+    var flagBtn = $("flag-mode");
+    if (flagBtn) flagBtn.textContent = flagMode ? t("act.flag") : t("act.open");
+    var readBtn = $("lesson-read-btn");
+    var readBody = $("lesson-read-body");
+    if (readBtn && readBody) {
+      readBtn.textContent = readBody.classList.contains("hidden") ? t("analysis.show") : t("analysis.hide");
+    }
+    var keepDiff = diffEl.value;
+    var keepLesson = lessonEl.value;
+    fillDiffs();
+    if (keepDiff) diffEl.value = keepDiff;
+    if (keepLesson) lessonEl.value = keepLesson;
+    paintTeach();
+    if (!$("page-boards").classList.contains("hidden")) showBoards();
+    else if (!$("page-campaign").classList.contains("hidden")) showCampaign();
+    else if (!$("page-teach").classList.contains("hidden")) showTeach();
+    else if (!$("play").classList.contains("hidden")) {
+      setHero(playTitle());
+      var label = $("play-label");
+      if (label) label.textContent = playTitle();
+    } else setHero(t("hero.choose"));
+    if (modal.classList.contains("hidden")) return;
+    if (modalKind === "settings") { openModal(t("modal.settings"), settingsHtml()); bindSettings(); }
+    else if (modalKind === "stats") { openModal(t("modal.stats"), statsHtml()); bindStats(); }
+    else if (modalKind === "share") {
+      openModal(t("modal.share"), shareHtml());
+      var copy = $("copy-link");
+      if (copy) copy.onclick = function () {
+        navigator.clipboard.writeText($("share-link").value).then(function () { say(t("copied")); });
+      };
+      var png = $("save-png");
+      if (png) png.onclick = drawPng;
+    }
+  }
+
   if (/[#&?]mockCloud=1/.test(location.href)) NG.installMockCloud();
+  settings.lang = settings.lang || "en";
+  NG.onLang = refreshLang;
+  NG.setLang(settings.lang, true);
+  NG.fillLangSelect($("lang-select"), settings.lang);
+  $("lang-select").onchange = function () { chooseLang(this.value); };
   fillDiffs();
   fillHome();
   applyChrome();
@@ -2189,6 +2273,6 @@
   } else {
     showHome();
   }
-  if (NG._mockCloud) say("已开启本地云端模拟。");
+  if (NG._mockCloud) say(t("mock.cloud"));
   NG.loadCloudConfig();
 })();
