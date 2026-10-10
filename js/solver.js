@@ -297,8 +297,8 @@ function enumerate(neigh, open, visible, knownMine, knownSafe, frontier, remainM
   return { solutions: solutions, hits: hits, minOut: minOut, maxOut: maxOut };
 }
 
-/** 用完整局面模拟玩家：只靠可见信息能否清空。 */
-NG.proveSolvable = function (rows, cols, numbers, start) {
+/** 用完整局面模拟玩家：只靠可见信息能否清空。preOpen 为开局已翻开的格。 */
+NG.proveSolvable = function (rows, cols, numbers, start, preOpen) {
   var n = rows * cols;
   var neigh = NG.buildNeighbors(rows, cols);
   var open = new Uint8Array(n);
@@ -321,8 +321,16 @@ NG.proveSolvable = function (rows, cols, numbers, start) {
       }
     }
   }
-  if (numbers[start] < 0) return false;
-  flood(start);
+  if (preOpen && preOpen.length) {
+    for (var p = 0; p < preOpen.length; p++) {
+      var pi = preOpen[p];
+      if (numbers[pi] < 0) return false;
+      flood(pi);
+    }
+  } else {
+    if (numbers[start] < 0) return false;
+    flood(start);
+  }
 
   var guard = 0;
   while (guard++ < n * 4) {
