@@ -10,7 +10,7 @@ The interface is available in English, Simplified Chinese, Traditional Chinese, 
 
 ## How to play
 
-- **Desktop**: left-click to open, right-click to flag. When the flags around a number are complete, double-click or middle-click that cell to open the rest.
+- **Desktop**: left-click to open, right-click to flag. When the flags around a number are complete, click or middle-click that cell to open the rest.
 - **Phone**: tap to open, long-press to flag. Switch between Open and Flag. Pinch to zoom.
 - **Keyboard**: arrow keys move, Space opens, F flags, Z undoes, H asks for a hint.
 - Choose a mode on the home page. Practice, Speed, and Zen continue to a board picker. Campaign and Lessons each have their own page.
@@ -35,10 +35,19 @@ A sync endpoint adds cloud backup and the daily board. A failure does not stop p
 
 ## Start
 
-- Open `index.html`, or use the link above.
+- Open `index.html` or `start.bat`, or use the link above.
 - The game can also be installed as a PWA and used offline.
 
 There is no realtime match. To compare times, share a link.
+
+## Deploy
+
+- **OpenShip**: import this repo; it reads `openship.json` for static hosting. Optionally attach a Worker from `cloud/`.
+- **GitHub Pages**: already published from `main` at the site root.
+
+## Offline download
+
+Run `scripts/pack-offline.ps1` (or `scripts/pack-offline.bat`). A zip lands under `dist/` (e.g. `no-guess-minesweeper-v*.zip`). Unzip, then open `index.html` or `start.bat`. Without a network, cloud features degrade; local play still works.
 
 ## Contributors
 

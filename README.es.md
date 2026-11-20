@@ -10,7 +10,7 @@ La interfaz está en inglés, chino simplificado, chino tradicional, japonés, c
 
 ## Cómo jugar
 
-- **Ordenador**: clic izquierdo para abrir, clic derecho para marcar. Si las banderas alrededor de un número están completas, un doble clic o clic central abre el resto.
+- **Ordenador**: clic izquierdo para abrir, clic derecho para marcar. Si las banderas alrededor de un número están completas, un clic o clic central abre el resto.
 - **Teléfono**: toca para abrir, mantén pulsado para marcar. Se puede alternar entre Abrir y Bandera. Pellizca para ampliar.
 - **Teclado**: las flechas mueven, Espacio abre, F marca, Z deshace, H pide una pista.
 - Elige un modo en la página inicial. Práctica, Velocidad y Zen continúan en un selector de tablero. Campaña y Lecciones tienen cada una su página.
@@ -35,10 +35,19 @@ Un endpoint de sincronización añade la copia en la nube y el tablero diario. U
 
 ## Inicio
 
-- Abre `index.html` o usa el enlace de arriba.
+- Abre `index.html` o `start.bat`, o usa el enlace de arriba.
 - También se puede instalar como PWA y usarse sin conexión.
 
 No hay partidas en tiempo real. Para comparar tiempos, comparte un enlace.
+
+## Publicación
+
+- **OpenShip**: importa este repositorio; lee `openship.json` para el alojamiento estático. Opcionalmente, conecta un Worker de `cloud/`.
+- **GitHub Pages**: ya publicado desde la raíz de `main`.
+
+## Descarga sin conexión
+
+Ejecuta `scripts/pack-offline.ps1` (o `scripts/pack-offline.bat`). El zip queda en `dist/` (p. ej. `no-guess-minesweeper-v*.zip`). Descomprímelo y abre `index.html` o `start.bat`. Sin red, las funciones en la nube se degradan; el juego local sigue funcionando.
 
 ## Colaboradores
 

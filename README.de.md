@@ -10,7 +10,7 @@ Die Oberfläche gibt es auf Englisch, vereinfachtem Chinesisch, traditionellem C
 
 ## So wird gespielt
 
-- **Computer**: Linksklick öffnet, Rechtsklick markiert. Sind die Flaggen um eine Zahl vollständig, öffnet ein Doppelklick oder Mittelklick den Rest.
+- **Computer**: Linksklick öffnet, Rechtsklick markiert. Sind die Flaggen um eine Zahl vollständig, öffnet ein Klick oder Mittelklick den Rest.
 - **Telefon**: Tippen öffnet, langes Drücken markiert. Zwischen Öffnen und Flagge kann umgeschaltet werden. Mit zwei Fingern zoomen.
 - **Tastatur**: Pfeiltasten bewegen, Leertaste öffnet, F markiert, Z macht rückgängig, H fordert einen Hinweis.
 - Wählen Sie auf der Startseite einen Modus. Übung, Tempo und Zen führen zur Feldauswahl. Kampagne und Lektionen haben jeweils eine eigene Seite.
@@ -35,10 +35,19 @@ Ein Sync-Endpunkt ergänzt Cloud-Sicherung und die Tagesliste. Ein Fehler stoppt
 
 ## Start
 
-- Öffnen Sie `index.html` oder den Link oben.
+- Öffnen Sie `index.html` oder `start.bat`, oder den Link oben.
 - Das Spiel kann auch als PWA installiert und offline genutzt werden.
 
 Es gibt kein Spiel in Echtzeit. Zum Vergleichen der Zeiten teilen Sie einen Link.
+
+## Bereitstellung
+
+- **OpenShip**: dieses Repository importieren; es liest `openship.json` für statisches Hosting. Optional einen Worker aus `cloud/` anbinden.
+- **GitHub Pages**: bereits aus dem Root von `main` veröffentlicht.
+
+## Offline-Download
+
+`scripts/pack-offline.ps1` (oder `scripts/pack-offline.bat`) ausführen. Unter `dist/` liegt dann eine Zip (z. B. `no-guess-minesweeper-v*.zip`). Entpacken und `index.html` oder `start.bat` öffnen. Ohne Netz fallen Cloud-Funktionen zurück; lokal spielen geht weiter.
 
 ## Mitwirkende
 

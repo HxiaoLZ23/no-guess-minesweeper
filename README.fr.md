@@ -10,7 +10,7 @@ L’interface est proposée en anglais, chinois simplifié, chinois traditionnel
 
 ## Comment jouer
 
-- **Ordinateur** : clic gauche pour ouvrir, clic droit pour marquer. Quand les drapeaux autour d’un chiffre sont complets, un double-clic ou un clic du milieu ouvre le reste.
+- **Ordinateur** : clic gauche pour ouvrir, clic droit pour marquer. Quand les drapeaux autour d’un chiffre sont complets, un clic ou un clic du milieu ouvre le reste.
 - **Téléphone** : touchez pour ouvrir, appuyez longuement pour marquer. On peut passer de Ouvrir à Drapeau. Pincez pour zoomer.
 - **Clavier** : les flèches déplacent, Espace ouvre, F marque, Z annule, H demande un indice.
 - Choisissez un mode sur la page d’accueil. Entraînement, Vitesse et Zen mènent ensuite au choix de la grille. Campagne et Leçons ont chacune leur page.
@@ -35,10 +35,19 @@ Un point de synchronisation ajoute la sauvegarde cloud et le classement du jour.
 
 ## Démarrage
 
-- Ouvrez `index.html`, ou utilisez le lien ci-dessus.
+- Ouvrez `index.html` ou `start.bat`, ou utilisez le lien ci-dessus.
 - Le jeu peut aussi être installé comme PWA et utilisé hors ligne.
 
 Il n’y a pas de partie en temps réel. Pour comparer les temps, partagez un lien.
+
+## Publication
+
+- **OpenShip** : importez ce dépôt ; il lit `openship.json` pour l’hébergement statique. Vous pouvez aussi attacher un Worker depuis `cloud/`.
+- **GitHub Pages** : déjà publié depuis la racine de `main`.
+
+## Téléchargement hors ligne
+
+Lancez `scripts/pack-offline.ps1` (ou `scripts/pack-offline.bat`). Un zip apparaît dans `dist/` (ex. `no-guess-minesweeper-v*.zip`). Décompressez, puis ouvrez `index.html` ou `start.bat`. Sans réseau, les fonctions cloud se dégradent ; le jeu local reste disponible.
 
 ## Contributeurs
 

@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "build": 17,
-  "notes": "闯关改为经典整局；练习、竞速、禅的选盘分开。",
-  "publishedAt": "2026-09-19"
+  "version": "1.5.0",
+  "build": 18,
+  "notes": "OpenShip 静态托管就绪；新增可离线打开的本地下载包。",
+  "publishedAt": "2026-11-20"
 }

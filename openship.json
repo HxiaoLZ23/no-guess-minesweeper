@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openship.io/openship.schema.json",
+  "framework": "static",
+  "buildCommand": "bash scripts/prepare-static.sh",
+  "outputDirectory": "dist/site",
+  "productionMode": "static"
+}
